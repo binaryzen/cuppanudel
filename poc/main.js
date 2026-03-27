@@ -25,6 +25,8 @@ const beatGridCanvas  = document.getElementById('beat-grid');
 const bpmKnobCanvas   = document.getElementById('bpm-knob');
 const beatsKnobCanvas = document.getElementById('beats-knob');
 const delayKnobCanvas = document.getElementById('delay-knob');
+const snapKnobCanvas  = document.getElementById('snap-knob');
+const snapVal         = document.getElementById('snap-val');
 const recordBtn     = document.getElementById('record-btn');
 const recStatus     = document.getElementById('rec-status');
 const ringControls  = document.getElementById('ring-controls');
@@ -69,25 +71,65 @@ const delayKnob = createKnob(delayKnobCanvas, 0, 100, 0, v => {
     delayVal.textContent = v + 'ms';
 });
 
+tc.snapThreshold = 0;
+const snapKnob = createKnob(snapKnobCanvas, 0, 5, 0, v => {
+    tc.snapThreshold = v * 0.005;   // 0–0.025 in offset space (~0–40% of a 16th note)
+    snapVal.textContent = v;
+});
+
 // ── Metro fullscreen toggle ───────────────────────────────────────────────────
 const BEAT_GRID_DEFAULT_W = 400;
 const BEAT_GRID_DEFAULT_H = 68;
 
-function enterMetroFullscreen() {
-    metroPanel.classList.add('fullscreen');
-    document.body.style.overflow = 'hidden';
+function resizeBeatGridFullscreen() {
     beatGridCanvas.width  = window.innerWidth - 32;
     beatGridCanvas.height = Math.floor(window.innerHeight * 0.55);
     metroDisplay.draw(null);
 }
 
-function exitMetroFullscreen() {
-    metroPanel.classList.remove('fullscreen');
-    document.body.style.overflow = '';
+function resizeBeatGridDefault() {
     beatGridCanvas.width  = BEAT_GRID_DEFAULT_W;
     beatGridCanvas.height = BEAT_GRID_DEFAULT_H;
     metroDisplay.draw(null);
 }
+
+function cssEnterFullscreen() {
+    metroPanel.classList.add('fullscreen');
+    document.body.style.overflow = 'hidden';
+    resizeBeatGridFullscreen();
+}
+
+function cssExitFullscreen() {
+    metroPanel.classList.remove('fullscreen');
+    document.body.style.overflow = '';
+    resizeBeatGridDefault();
+}
+
+function enterMetroFullscreen() {
+    if (document.fullscreenEnabled) {
+        metroPanel.requestFullscreen().catch(() => cssEnterFullscreen());
+    } else {
+        cssEnterFullscreen();
+    }
+}
+
+function exitMetroFullscreen() {
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    } else {
+        cssExitFullscreen();
+    }
+}
+
+// resize canvas when native fullscreen transitions complete (including Escape to exit)
+metroPanel.addEventListener('fullscreenchange', () => {
+    if (document.fullscreenElement === metroPanel) {
+        resizeBeatGridFullscreen();
+    } else {
+        document.body.style.overflow = '';
+        resizeBeatGridDefault();
+    }
+});
 
 metroExpandBtn.addEventListener('click',  enterMetroFullscreen);
 metroRestoreBtn.addEventListener('click', exitMetroFullscreen);
@@ -98,6 +140,8 @@ document.getElementById('beats-dec').addEventListener('click', () => beatsKnob.s
 document.getElementById('beats-inc').addEventListener('click', () => beatsKnob.setValue(beatsKnob.getValue() + 1));
 document.getElementById('delay-dec').addEventListener('click', () => delayKnob.setValue(delayKnob.getValue() - 1));
 document.getElementById('delay-inc').addEventListener('click', () => delayKnob.setValue(delayKnob.getValue() + 1));
+document.getElementById('snap-dec').addEventListener('click',  () => snapKnob.setValue(snapKnob.getValue() - 1));
+document.getElementById('snap-inc').addEventListener('click',  () => snapKnob.setValue(snapKnob.getValue() + 1));
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 startBtn.addEventListener('click', async () => {
