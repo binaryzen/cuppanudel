@@ -17,12 +17,14 @@ export function createMetroDisplay(tc, canvas) {
     let prevPlayhead = null;
     const flashTimes = [];     // per-beat timestamp of last flash (ms)
 
-    let dragStartX  = 0;
-    let dragStartY  = 0;
-    let tapStartTime = 0;
-    let hasMoved    = false;
-    const TAP_MOVE_PX = 20;
-    const TAP_MAX_MS  = 250;
+    let dragStartX      = 0;
+    let dragStartY      = 0;
+    let tapStartTime    = 0;
+    let hasMoved        = false;
+    let snapOffset      = null;   // tc.beatOffsets value at pointer-down, for tap rollback
+    let snapVolume      = null;   // tc.beatVolumes value at pointer-down, for tap rollback
+    const TAP_MOVE_PX   = 20;
+    const TAP_MAX_MS    = 250;
 
     // ── dynamic geometry — proportional to current canvas size ────────────────
     function getGeom() {
@@ -97,7 +99,9 @@ export function createMetroDisplay(tc, canvas) {
             const dx = mx - hx;
             const dy = my - hy;
             if (Math.sqrt(dx * dx + dy * dy) <= HANDLE_R + 4) {
-                dragging = i;
+                dragging    = i;
+                snapOffset  = tc.beatOffsets[i];
+                snapVolume  = tc.beatVolumes[i];
                 e.preventDefault();
                 break;
             }
@@ -128,10 +132,14 @@ export function createMetroDisplay(tc, canvas) {
 
     window.addEventListener('mouseup', () => {
         if (!hasMoved && (performance.now() - tapStartTime) < TAP_MAX_MS && dragging !== null) {
+            tc.beatOffsets[dragging] = snapOffset;
+            tc.beatVolumes[dragging] = snapVolume;
             tc.beatAccents[dragging] = !tc.beatAccents[dragging];
             drawInternal(lastPlayhead);
         }
         dragging = null;
+        snapOffset = null;
+        snapVolume = null;
     });
 
     // ── touch interaction ─────────────────────────────────────────────────────
@@ -147,7 +155,9 @@ export function createMetroDisplay(tc, canvas) {
             const dx = mx - hx;
             const dy = my - hy;
             if (Math.sqrt(dx * dx + dy * dy) <= HANDLE_R + 4) {
-                dragging = i;
+                dragging    = i;
+                snapOffset  = tc.beatOffsets[i];
+                snapVolume  = tc.beatVolumes[i];
                 e.preventDefault();
                 break;
             }
@@ -180,10 +190,14 @@ export function createMetroDisplay(tc, canvas) {
 
     window.addEventListener('touchend', () => {
         if (!hasMoved && (performance.now() - tapStartTime) < TAP_MAX_MS && dragging !== null) {
+            tc.beatOffsets[dragging] = snapOffset;
+            tc.beatVolumes[dragging] = snapVolume;
             tc.beatAccents[dragging] = !tc.beatAccents[dragging];
             drawInternal(lastPlayhead);
         }
         dragging = null;
+        snapOffset = null;
+        snapVolume = null;
     });
 
     // ── reference grid ────────────────────────────────────────────────────────
