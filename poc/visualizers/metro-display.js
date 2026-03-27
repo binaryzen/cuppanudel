@@ -1,44 +1,57 @@
-const PAD_L         = 10;
-const PAD_R         = 10;
-const TIMELINE_Y    = 50;
-const VOL_MAX_Y     = 10;   // handle center y at 100% volume
-const VOL_MIN_Y     = 44;   // handle center y at   0% volume (circle touches timeline)
-const HANDLE_R      = 6;
-const MIN_GAP       = 0.025;
-const FLASH_MS      = 200;
+const PAD_L    = 10;
+const PAD_R    = 10;
+const MIN_GAP  = 0.025;
+const FLASH_MS = 200;
 
-const C_DOWN        = '#4fc';
-const C_BEAT        = '#999';
-const C_DRAG        = '#ffe066';
-const C_PLAYHEAD    = 'rgba(255,150,30,0.9)';
+const C_DOWN     = '#4fc';
+const C_BEAT     = '#999';
+const C_DRAG     = '#ffe066';
+const C_PLAYHEAD = 'rgba(255,150,30,0.9)';
 
 export function createMetroDisplay(tc, canvas) {
-    const ctx    = canvas.getContext('2d');
-    const W      = canvas.width;
-    const H      = canvas.height;
-    const usable = W - PAD_L - PAD_R;
+    const ctx = canvas.getContext('2d');
 
-    let dragging       = null;   // beat index being dragged, or null
-    let lastPlayhead   = null;
-    let prevPlayhead   = null;
-    const flashTimes   = [];     // per-beat timestamp of last flash (ms)
+    let dragging     = null;   // beat index being dragged, or null
+    let lastPlayhead = null;
+    let prevPlayhead = null;
+    const flashTimes = [];     // per-beat timestamp of last flash (ms)
 
-    function beatX(offset) { return PAD_L + offset * usable; }
-    function xToOffset(x)  { return (x - PAD_L) / usable; }
-    function volToY(v)     { return VOL_MIN_Y - v * (VOL_MIN_Y - VOL_MAX_Y); }
-    function yToVol(y)     { return 1 - (y - VOL_MAX_Y) / (VOL_MIN_Y - VOL_MAX_Y); }
+    // ── dynamic geometry — proportional to current canvas size ────────────────
+    function getGeom() {
+        const W          = canvas.width;
+        const H          = canvas.height;
+        const usable     = W - PAD_L - PAD_R;
+        const TIMELINE_Y = Math.round(H * 0.735);              // ~50/68
+        const VOL_MAX_Y  = Math.round(H * 0.147);              // ~10/68
+        const VOL_MIN_Y  = Math.round(H * 0.647);              // ~44/68
+        const HANDLE_R   = Math.max(4, Math.round(H * 0.088)); // ~6/68, min 4
+        return { W, H, usable, TIMELINE_Y, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R };
+    }
+
+    function beatX(offset, usable)            { return PAD_L + offset * usable; }
+    function xToOffset(x, usable)             { return (x - PAD_L) / usable; }
+    function volToY(v, VOL_MAX_Y, VOL_MIN_Y)  { return VOL_MIN_Y - v * (VOL_MIN_Y - VOL_MAX_Y); }
+    function yToVol(y, VOL_MAX_Y, VOL_MIN_Y)  { return 1 - (y - VOL_MAX_Y) / (VOL_MIN_Y - VOL_MAX_Y); }
+
+    // converts a clientX/clientY to canvas logical coordinates, accounting for CSS scaling
+    function getCanvasPoint(clientX, clientY) {
+        const rect   = canvas.getBoundingClientRect();
+        const scaleX = canvas.width  / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return {
+            mx: (clientX - rect.left) * scaleX,
+            my: (clientY - rect.top)  * scaleY,
+        };
+    }
 
     // ── mouse interaction ─────────────────────────────────────────────────────
     canvas.addEventListener('mousedown', e => {
-        const rect = canvas.getBoundingClientRect();
-        const mx   = e.clientX - rect.left;
-        const my   = e.clientY - rect.top;
+        const { mx, my } = getCanvasPoint(e.clientX, e.clientY);
+        const { usable, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R } = getGeom();
 
-        // beat 0: volume-only (x is fixed)
-        // beats 1+: both x (position) and y (volume)
         for (let i = 0; i < tc.beatsPerMeasure; i++) {
-            const hx = beatX(tc.beatOffsets[i]);
-            const hy = volToY(tc.beatVolumes[i]);
+            const hx = beatX(tc.beatOffsets[i], usable);
+            const hy = volToY(tc.beatVolumes[i], VOL_MAX_Y, VOL_MIN_Y);
             const dx = mx - hx;
             const dy = my - hy;
             if (Math.sqrt(dx * dx + dy * dy) <= HANDLE_R + 4) {
@@ -51,13 +64,11 @@ export function createMetroDisplay(tc, canvas) {
 
     window.addEventListener('mousemove', e => {
         if (dragging === null) return;
-        const rect = canvas.getBoundingClientRect();
-        const mx   = e.clientX - rect.left;
-        const my   = e.clientY - rect.top;
+        const { mx, my } = getCanvasPoint(e.clientX, e.clientY);
+        const { usable, VOL_MAX_Y, VOL_MIN_Y } = getGeom();
 
-        // x → beat position (skip for beat 0)
         if (dragging > 0) {
-            const raw = xToOffset(mx);
+            const raw = xToOffset(mx, usable);
             const lo  = tc.beatOffsets[dragging - 1] + MIN_GAP;
             const hi  = dragging < tc.beatsPerMeasure - 1
                 ? tc.beatOffsets[dragging + 1] - MIN_GAP
@@ -65,16 +76,56 @@ export function createMetroDisplay(tc, canvas) {
             tc.beatOffsets[dragging] = Math.max(lo, Math.min(hi, raw));
         }
 
-        // y → volume (all beats)
-        tc.beatVolumes[dragging] = Math.max(0, Math.min(1, yToVol(my)));
-
+        tc.beatVolumes[dragging] = Math.max(0, Math.min(1, yToVol(my, VOL_MAX_Y, VOL_MIN_Y)));
         drawInternal(lastPlayhead);
     });
 
     window.addEventListener('mouseup', () => { dragging = null; });
 
+    // ── touch interaction ─────────────────────────────────────────────────────
+    canvas.addEventListener('touchstart', e => {
+        const touch = e.changedTouches[0];
+        const { mx, my } = getCanvasPoint(touch.clientX, touch.clientY);
+        const { usable, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R } = getGeom();
+
+        for (let i = 0; i < tc.beatsPerMeasure; i++) {
+            const hx = beatX(tc.beatOffsets[i], usable);
+            const hy = volToY(tc.beatVolumes[i], VOL_MAX_Y, VOL_MIN_Y);
+            const dx = mx - hx;
+            const dy = my - hy;
+            if (Math.sqrt(dx * dx + dy * dy) <= HANDLE_R + 4) {
+                dragging = i;
+                e.preventDefault();
+                break;
+            }
+        }
+    }, { passive: false });
+
+    window.addEventListener('touchmove', e => {
+        if (dragging === null) return;
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        const { mx, my } = getCanvasPoint(touch.clientX, touch.clientY);
+        const { usable, VOL_MAX_Y, VOL_MIN_Y } = getGeom();
+
+        if (dragging > 0) {
+            const raw = xToOffset(mx, usable);
+            const lo  = tc.beatOffsets[dragging - 1] + MIN_GAP;
+            const hi  = dragging < tc.beatsPerMeasure - 1
+                ? tc.beatOffsets[dragging + 1] - MIN_GAP
+                : 1 - MIN_GAP;
+            tc.beatOffsets[dragging] = Math.max(lo, Math.min(hi, raw));
+        }
+
+        tc.beatVolumes[dragging] = Math.max(0, Math.min(1, yToVol(my, VOL_MAX_Y, VOL_MIN_Y)));
+        drawInternal(lastPlayhead);
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => { dragging = null; });
+
     // ── reference grid ────────────────────────────────────────────────────────
-    function drawReferenceGrid() {
+    function drawReferenceGrid(geom) {
+        const { usable, TIMELINE_Y, VOL_MAX_Y, HANDLE_R } = geom;
         const N       = tc.beatsPerMeasure;
         const gridTop = VOL_MAX_Y + HANDLE_R + 2;
         const tripTop = VOL_MAX_Y + HANDLE_R + 10;
@@ -83,7 +134,7 @@ export function createMetroDisplay(tc, canvas) {
         ctx.strokeStyle = 'rgba(120,220,120,0.60)';
         ctx.setLineDash([4, 4]);
         for (let i = 1; i < N; i++) {
-            const x = beatX(i / N);
+            const x = beatX(i / N, usable);
             ctx.beginPath();
             ctx.moveTo(x, gridTop);
             ctx.lineTo(x, TIMELINE_Y);
@@ -96,7 +147,7 @@ export function createMetroDisplay(tc, canvas) {
             const from = i / N;
             const to   = (i + 1) / N;
             for (const frac of [1/3, 2/3]) {
-                const x = beatX(from + (to - from) * frac);
+                const x = beatX(from + (to - from) * frac, usable);
                 ctx.beginPath();
                 ctx.moveTo(x, tripTop);
                 ctx.lineTo(x, TIMELINE_Y);
@@ -109,6 +160,9 @@ export function createMetroDisplay(tc, canvas) {
 
     // ── drawing ───────────────────────────────────────────────────────────────
     function drawInternal(playheadPos) {
+        const geom = getGeom();
+        const { W, H, usable, TIMELINE_Y, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R } = geom;
+
         // sync flash array length to beat count
         while (flashTimes.length < tc.beatsPerMeasure) flashTimes.push(null);
         flashTimes.length = tc.beatsPerMeasure;
@@ -127,7 +181,7 @@ export function createMetroDisplay(tc, canvas) {
         prevPlayhead = playheadPos;
 
         ctx.clearRect(0, 0, W, H);
-        drawReferenceGrid();
+        drawReferenceGrid(geom);
 
         // timeline bar
         ctx.fillStyle = '#2a2a2a';
@@ -136,9 +190,9 @@ export function createMetroDisplay(tc, canvas) {
         const now = performance.now();
 
         for (let i = 0; i < tc.beatsPerMeasure; i++) {
-            const x      = beatX(tc.beatOffsets[i]);
+            const x      = beatX(tc.beatOffsets[i], usable);
             const vol    = tc.beatVolumes[i];
-            const hy     = volToY(vol);
+            const hy     = volToY(vol, VOL_MAX_Y, VOL_MIN_Y);
             const isDown = i === 0;
             const isDrag = dragging === i;
             const color  = isDown ? C_DOWN : isDrag ? C_DRAG : C_BEAT;
@@ -205,7 +259,7 @@ export function createMetroDisplay(tc, canvas) {
 
         // playhead
         if (playheadPos !== null) {
-            const px = beatX(playheadPos);
+            const px = beatX(playheadPos, usable);
             ctx.beginPath();
             ctx.moveTo(px, 0);
             ctx.lineTo(px, H);
