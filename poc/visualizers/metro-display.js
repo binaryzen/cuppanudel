@@ -34,7 +34,7 @@ export function createMetroDisplay(tc, canvas) {
         const TIMELINE_Y   = Math.round(H * 0.735);              // ~50/68
         const VOL_MAX_Y    = Math.round(H * 0.147);              // ~10/68
         const VOL_MIN_Y    = Math.round(H * 0.647);              // ~44/68
-        const HANDLE_R     = Math.max(4, Math.round(H * 0.088)); // ~6/68, min 4
+        const HANDLE_R     = 6;                                   // fixed size; don't scale with canvas
         const SIXTEENTH_TOP = Math.round(H * 0.44);              // ~30/68, start of 16th note lines
         return { W, H, usable, TIMELINE_Y, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R, SIXTEENTH_TOP };
     }
