@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cuppanudel POC</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: monospace;
+            background: #111;
+            color: #eee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            gap: 2rem;
+        }
+
+        button {
+            font-family: monospace;
+            font-size: 0.9rem;
+            padding: 0.4rem 1rem;
+            cursor: pointer;
+            background: #222;
+            color: #eee;
+            border: 1px solid #444;
+        }
+        button:disabled { opacity: 0.4; cursor: default; }
+        button:hover:not(:disabled) { background: #333; }
+        button.danger { border-color: #933; color: #f88; }
+        button.danger:hover:not(:disabled) { background: #311; }
+        button.active { background: #900; border-color: #f44; color: #fff; }
+
+        label.dim { color: #666; font-size: 0.75rem; letter-spacing: 0.1em; }
+
+        /* ── peak meter ── */
+        #peak-meter {
+            width: 420px;
+            height: 24px;
+            display: block;
+        }
+
+        /* ── sample browser ── */
+        #sample-browser {
+            width: 420px;
+            border: 1px solid #333;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        #sample-browser h2 { font-size: 0.85rem; letter-spacing: 0.15em; color: #888; }
+
+        .row { display: flex; align-items: center; gap: 0.75rem; }
+
+        input[type=range] { flex: 1; accent-color: #4fc; }
+        input[type=range]:disabled { opacity: 0.4; }
+
+        #ring-controls { display: flex; align-items: center; gap: 0.75rem; }
+        #ring-controls.hidden { display: none; }
+
+        #record-btn { min-width: 90px; }
+        button.playing { background: #040; border-color: #4f4; color: #4fc; }
+
+        /* ── sample list ── */
+        #sample-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        #sample-list li {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.3rem 0.5rem;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+        }
+        .clip-label {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.9rem;
+        }
+        .clip-thumb { flex-shrink: 0; display: block; background: #0a0a0a; }
+        .clip-duration { color: #666; font-size: 0.8rem; min-width: 4ch; text-align: right; }
+        .clip-actions { display: flex; gap: 0.3rem; }
+        .clip-actions button { padding: 0.2rem 0.5rem; font-size: 0.75rem; }
+
+        #empty-msg { color: #444; font-size: 0.85rem; text-align: center; padding: 1rem 0; }
+
+        /* ── metronome ── */
+        #metro-panel {
+            width: 420px;
+            border: 1px solid #333;
+            padding: 0.75rem 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        #metro-panel h2 { font-size: 0.85rem; letter-spacing: 0.15em; color: #888; }
+        .metro-top { display: flex; align-items: center; gap: 1rem; }
+        .metro-ctrl-grp {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.2rem;
+        }
+        .knob-fine { display: flex; align-items: center; gap: 0.2rem; }
+        .knob-fine span { min-width: 3ch; text-align: center; font-size: 0.75rem; color: #888; }
+        .fine-btn { padding: 0.1rem 0.35rem; font-size: 0.8rem; min-width: 0; }
+        #metro-btn { margin-left: auto; min-width: 80px; }
+        #beat-grid {
+            display: block;
+            background: #0a0a0a;
+            border: 1px solid #222;
+            cursor: default;
+        }
+
+        /* ── tuner ── */
+        #tuner {
+            width: 420px;
+            height: 68px;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            display: block;
+        }
+
+        /* ── waveform ── */
+        #waveform {
+            width: 420px;
+            height: 120px;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <button id="start-btn">Start</button>
+
+    <canvas id="peak-meter" width="420" height="24"></canvas>
+    <canvas id="tuner" width="420" height="68"></canvas>
+    <canvas id="waveform" width="420" height="120"></canvas>
+
+    <section id="metro-panel">
+        <h2>METRONOME</h2>
+        <div class="metro-top">
+            <div class="metro-ctrl-grp">
+                <span class="dim">BPM</span>
+                <canvas id="bpm-knob" width="40" height="40"></canvas>
+                <div class="knob-fine">
+                    <button class="fine-btn" id="bpm-dec">−</button>
+                    <span id="bpm-val">120</span>
+                    <button class="fine-btn" id="bpm-inc">+</button>
+                </div>
+            </div>
+            <div class="metro-ctrl-grp">
+                <span class="dim">BEATS</span>
+                <canvas id="beats-knob" width="40" height="40"></canvas>
+                <div class="knob-fine">
+                    <button class="fine-btn" id="beats-dec">−</button>
+                    <span id="beats-val">4</span>
+                    <button class="fine-btn" id="beats-inc">+</button>
+                </div>
+            </div>
+            <div class="metro-ctrl-grp">
+                <span class="dim">VIS DELAY</span>
+                <canvas id="delay-knob" width="40" height="40"></canvas>
+                <div class="knob-fine">
+                    <button class="fine-btn" id="delay-dec">−</button>
+                    <span id="delay-val">0ms</span>
+                    <button class="fine-btn" id="delay-inc">+</button>
+                </div>
+            </div>
+            <button id="metro-btn" disabled>▶ Start</button>
+        </div>
+        <canvas id="beat-grid" width="400" height="68"></canvas>
+    </section>
+
+    <section id="sample-browser">
+        <h2>SAMPLE BROWSER</h2>
+
+        <div class="row">
+            <label><input type="radio" name="rec-mode" value="dynamic" checked> Dynamic</label>
+            <label><input type="radio" name="rec-mode" value="fixed"> Fixed</label>
+        </div>
+
+        <div id="ring-controls" class="hidden">
+            <label class="dim">LEN</label>
+            <input type="range" id="ring-duration" min="500" max="30000" step="500" value="5000">
+            <span id="ring-duration-label" style="min-width:5ch">5000ms</span>
+        </div>
+
+        <div class="row">
+            <button id="record-btn" disabled>Record</button>
+            <span id="rec-status" style="color:#666; font-size:0.8rem"></span>
+        </div>
+
+        <ul id="sample-list">
+            <li id="empty-msg">No samples</li>
+        </ul>
+    </section>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>
