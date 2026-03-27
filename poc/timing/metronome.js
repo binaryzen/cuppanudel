@@ -49,7 +49,7 @@ export function createMetronome(context, tc) {
     function schedule() {
         const dur = measureDur();
         while (nextBeatTime < context.currentTime + LOOKAHEAD_SEC) {
-            playClick(nextBeatTime, currentBeat === 0, tc.beatVolumes[currentBeat]);
+            playClick(nextBeatTime, tc.beatAccents[currentBeat] ?? (currentBeat === 0), tc.beatVolumes[currentBeat]);
             currentBeat++;
             if (currentBeat >= tc.beatsPerMeasure) {
                 currentBeat  = 0;

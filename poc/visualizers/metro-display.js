@@ -17,6 +17,11 @@ export function createMetroDisplay(tc, canvas) {
     let prevPlayhead = null;
     const flashTimes = [];     // per-beat timestamp of last flash (ms)
 
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let hasMoved   = false;
+    const TAP_MOVE_PX = 5;
+
     // ── dynamic geometry — proportional to current canvas size ────────────────
     function getGeom() {
         const W            = canvas.width;
@@ -82,6 +87,7 @@ export function createMetroDisplay(tc, canvas) {
     canvas.addEventListener('mousedown', e => {
         const { mx, my } = getCanvasPoint(e.clientX, e.clientY);
         const { usable, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R } = getGeom();
+        dragStartX = mx; dragStartY = my; hasMoved = false;
 
         for (let i = 0; i < tc.beatsPerMeasure; i++) {
             const hx = beatX(tc.beatOffsets[i], usable);
@@ -101,6 +107,10 @@ export function createMetroDisplay(tc, canvas) {
         const { mx, my } = getCanvasPoint(e.clientX, e.clientY);
         const { usable, VOL_MAX_Y, VOL_MIN_Y } = getGeom();
 
+        if (!hasMoved && (Math.abs(mx - dragStartX) > TAP_MOVE_PX || Math.abs(my - dragStartY) > TAP_MOVE_PX)) {
+            hasMoved = true;
+        }
+
         if (dragging > 0) {
             const raw = snapToGrid(xToOffset(mx, usable));
             const lo  = tc.beatOffsets[dragging - 1] + MIN_GAP;
@@ -114,13 +124,20 @@ export function createMetroDisplay(tc, canvas) {
         drawInternal(lastPlayhead);
     });
 
-    window.addEventListener('mouseup', () => { dragging = null; });
+    window.addEventListener('mouseup', () => {
+        if (!hasMoved && dragging !== null) {
+            tc.beatAccents[dragging] = !tc.beatAccents[dragging];
+            drawInternal(lastPlayhead);
+        }
+        dragging = null;
+    });
 
     // ── touch interaction ─────────────────────────────────────────────────────
     canvas.addEventListener('touchstart', e => {
         const touch = e.changedTouches[0];
         const { mx, my } = getCanvasPoint(touch.clientX, touch.clientY);
         const { usable, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R } = getGeom();
+        dragStartX = mx; dragStartY = my; hasMoved = false;
 
         for (let i = 0; i < tc.beatsPerMeasure; i++) {
             const hx = beatX(tc.beatOffsets[i], usable);
@@ -142,6 +159,10 @@ export function createMetroDisplay(tc, canvas) {
         const { mx, my } = getCanvasPoint(touch.clientX, touch.clientY);
         const { usable, VOL_MAX_Y, VOL_MIN_Y } = getGeom();
 
+        if (!hasMoved && (Math.abs(mx - dragStartX) > TAP_MOVE_PX || Math.abs(my - dragStartY) > TAP_MOVE_PX)) {
+            hasMoved = true;
+        }
+
         if (dragging > 0) {
             const raw = snapToGrid(xToOffset(mx, usable));
             const lo  = tc.beatOffsets[dragging - 1] + MIN_GAP;
@@ -155,7 +176,13 @@ export function createMetroDisplay(tc, canvas) {
         drawInternal(lastPlayhead);
     }, { passive: false });
 
-    window.addEventListener('touchend', () => { dragging = null; });
+    window.addEventListener('touchend', () => {
+        if (!hasMoved && dragging !== null) {
+            tc.beatAccents[dragging] = !tc.beatAccents[dragging];
+            drawInternal(lastPlayhead);
+        }
+        dragging = null;
+    });
 
     // ── reference grid ────────────────────────────────────────────────────────
     function drawReferenceGrid(geom) {
@@ -244,9 +271,9 @@ export function createMetroDisplay(tc, canvas) {
             const x      = beatX(tc.beatOffsets[i], usable);
             const vol    = tc.beatVolumes[i];
             const hy     = volToY(vol, VOL_MAX_Y, VOL_MIN_Y);
-            const isDown = i === 0;
-            const isDrag = dragging === i;
-            const color  = isDown ? C_DOWN : isDrag ? C_DRAG : C_BEAT;
+            const isAccented = tc.beatAccents[i] ?? (i === 0);
+            const isDrag     = dragging === i;
+            const color      = isAccented ? C_DOWN : isDrag ? C_DRAG : C_BEAT;
 
             const flashAge   = flashTimes[i] !== null ? now - flashTimes[i] : Infinity;
             const flashAlpha = flashAge < FLASH_MS ? 1 - flashAge / FLASH_MS : 0;
@@ -267,8 +294,8 @@ export function createMetroDisplay(tc, canvas) {
                 ctx.moveTo(x, hy);
                 ctx.lineTo(x, TIMELINE_Y);
                 ctx.strokeStyle = color;
-                ctx.lineWidth   = isDown ? 2 : 1;
-                ctx.setLineDash(isDown ? [] : [3, 3]);
+                ctx.lineWidth   = isAccented ? 2 : 1;
+                ctx.setLineDash(isAccented ? [] : [3, 3]);
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
@@ -286,7 +313,7 @@ export function createMetroDisplay(tc, canvas) {
             // handle circle
             ctx.beginPath();
             ctx.arc(x, hy, HANDLE_R, 0, Math.PI * 2);
-            ctx.fillStyle   = isDrag ? C_DRAG : isDown ? C_DOWN : vol < 0.01 ? '#111' : '#333';
+            ctx.fillStyle   = isDrag ? C_DRAG : isAccented ? C_DOWN : vol < 0.01 ? '#111' : '#333';
             ctx.fill();
             ctx.strokeStyle = color;
             ctx.lineWidth   = 1.5;
