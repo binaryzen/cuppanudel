@@ -75,6 +75,7 @@ const BEAT_GRID_DEFAULT_H = 68;
 
 function enterMetroFullscreen() {
     metroPanel.classList.add('fullscreen');
+    document.body.style.overflow = 'hidden';
     beatGridCanvas.width  = window.innerWidth - 32;
     beatGridCanvas.height = Math.floor(window.innerHeight * 0.55);
     metroDisplay.draw(null);
@@ -82,6 +83,7 @@ function enterMetroFullscreen() {
 
 function exitMetroFullscreen() {
     metroPanel.classList.remove('fullscreen');
+    document.body.style.overflow = '';
     beatGridCanvas.width  = BEAT_GRID_DEFAULT_W;
     beatGridCanvas.height = BEAT_GRID_DEFAULT_H;
     metroDisplay.draw(null);
