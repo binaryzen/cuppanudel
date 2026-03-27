@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cuppanudel POC</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -13,8 +14,12 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 2rem;
+            padding: 1rem;
             gap: 2rem;
+        }
+
+        @media (min-width: 480px) {
+            body { padding: 2rem; }
         }
 
         button {
@@ -26,6 +31,11 @@
             color: #eee;
             border: 1px solid #444;
         }
+
+        @media (max-width: 479px) {
+            button { padding: 0.6rem 1rem; }
+            .fine-btn { padding: 0.35rem 0.5rem; }
+        }
         button:disabled { opacity: 0.4; cursor: default; }
         button:hover:not(:disabled) { background: #333; }
         button.danger { border-color: #933; color: #f88; }
@@ -36,14 +46,16 @@
 
         /* ── peak meter ── */
         #peak-meter {
-            width: 420px;
+            width: 100%;
+            max-width: 420px;
             height: 24px;
             display: block;
         }
 
         /* ── sample browser ── */
         #sample-browser {
-            width: 420px;
+            width: 100%;
+            max-width: 420px;
             border: 1px solid #333;
             padding: 1rem;
             display: flex;
@@ -96,7 +108,8 @@
 
         /* ── metronome ── */
         #metro-panel {
-            width: 420px;
+            width: 100%;
+            max-width: 420px;
             border: 1px solid #333;
             padding: 0.75rem 10px;
             display: flex;
@@ -120,11 +133,50 @@
             background: #0a0a0a;
             border: 1px solid #222;
             cursor: default;
+            max-width: 100%;
+        }
+
+        /* ── metro fullscreen ── */
+        #metro-panel.fullscreen {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            width: 100%;
+            max-width: none;
+            background: #111;
+            padding: 1rem;
+            overflow-y: auto;
+            border: none;
+        }
+
+        #metro-header {
+            display: flex;
+            align-items: center;
+        }
+        #metro-header h2 { flex: 1; }
+
+        #metro-expand-btn {
+            font-size: 1rem;
+            padding: 0.1rem 0.4rem;
+            line-height: 1;
+        }
+
+        #metro-restore-btn {
+            display: none;
+        }
+
+        #metro-panel.fullscreen #metro-restore-btn {
+            display: inline-block;
+        }
+
+        #metro-panel.fullscreen #metro-expand-btn {
+            display: none;
         }
 
         /* ── tuner ── */
         #tuner {
-            width: 420px;
+            width: 100%;
+            max-width: 420px;
             height: 68px;
             background: #0a0a0a;
             border: 1px solid #333;
@@ -133,7 +185,8 @@
 
         /* ── waveform ── */
         #waveform {
-            width: 420px;
+            width: 100%;
+            max-width: 420px;
             height: 120px;
             background: #0a0a0a;
             border: 1px solid #333;
@@ -149,7 +202,11 @@
     <canvas id="waveform" width="420" height="120"></canvas>
 
     <section id="metro-panel">
-        <h2>METRONOME</h2>
+        <div id="metro-header">
+            <h2>METRONOME</h2>
+            <button id="metro-expand-btn" title="Fullscreen">⛶</button>
+            <button id="metro-restore-btn">✕ Restore</button>
+        </div>
         <div class="metro-top">
             <div class="metro-ctrl-grp">
                 <span class="dim">BPM</span>

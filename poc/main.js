@@ -32,6 +32,9 @@ const ringDuration  = document.getElementById('ring-duration');
 const ringDurLabel  = document.getElementById('ring-duration-label');
 const sampleList    = document.getElementById('sample-list');
 const recModeRadios = document.querySelectorAll('input[name="rec-mode"]');
+const metroPanel      = document.getElementById('metro-panel');
+const metroExpandBtn  = document.getElementById('metro-expand-btn');
+const metroRestoreBtn = document.getElementById('metro-restore-btn');
 
 // ── App state ─────────────────────────────────────────────────────────────────
 let context      = null;
@@ -65,6 +68,27 @@ const delayKnob = createKnob(delayKnobCanvas, 0, 100, 0, v => {
     tc.visualDelayMs = v;
     delayVal.textContent = v + 'ms';
 });
+
+// ── Metro fullscreen toggle ───────────────────────────────────────────────────
+const BEAT_GRID_DEFAULT_W = 400;
+const BEAT_GRID_DEFAULT_H = 68;
+
+function enterMetroFullscreen() {
+    metroPanel.classList.add('fullscreen');
+    beatGridCanvas.width  = window.innerWidth - 32;
+    beatGridCanvas.height = Math.floor(window.innerHeight * 0.55);
+    metroDisplay.draw(null);
+}
+
+function exitMetroFullscreen() {
+    metroPanel.classList.remove('fullscreen');
+    beatGridCanvas.width  = BEAT_GRID_DEFAULT_W;
+    beatGridCanvas.height = BEAT_GRID_DEFAULT_H;
+    metroDisplay.draw(null);
+}
+
+metroExpandBtn.addEventListener('click',  enterMetroFullscreen);
+metroRestoreBtn.addEventListener('click', exitMetroFullscreen);
 
 document.getElementById('bpm-dec').addEventListener('click',   () => bpmKnob.setValue(bpmKnob.getValue() - 1));
 document.getElementById('bpm-inc').addEventListener('click',   () => bpmKnob.setValue(bpmKnob.getValue() + 1));
