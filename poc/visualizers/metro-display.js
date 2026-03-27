@@ -17,10 +17,12 @@ export function createMetroDisplay(tc, canvas) {
     let prevPlayhead = null;
     const flashTimes = [];     // per-beat timestamp of last flash (ms)
 
-    let dragStartX = 0;
-    let dragStartY = 0;
-    let hasMoved   = false;
-    const TAP_MOVE_PX = 5;
+    let dragStartX  = 0;
+    let dragStartY  = 0;
+    let tapStartTime = 0;
+    let hasMoved    = false;
+    const TAP_MOVE_PX = 20;
+    const TAP_MAX_MS  = 250;
 
     // ── dynamic geometry — proportional to current canvas size ────────────────
     function getGeom() {
@@ -87,7 +89,7 @@ export function createMetroDisplay(tc, canvas) {
     canvas.addEventListener('mousedown', e => {
         const { mx, my } = getCanvasPoint(e.clientX, e.clientY);
         const { usable, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R } = getGeom();
-        dragStartX = mx; dragStartY = my; hasMoved = false;
+        dragStartX = mx; dragStartY = my; tapStartTime = performance.now(); hasMoved = false;
 
         for (let i = 0; i < tc.beatsPerMeasure; i++) {
             const hx = beatX(tc.beatOffsets[i], usable);
@@ -125,7 +127,7 @@ export function createMetroDisplay(tc, canvas) {
     });
 
     window.addEventListener('mouseup', () => {
-        if (!hasMoved && dragging !== null) {
+        if (!hasMoved && (performance.now() - tapStartTime) < TAP_MAX_MS && dragging !== null) {
             tc.beatAccents[dragging] = !tc.beatAccents[dragging];
             drawInternal(lastPlayhead);
         }
@@ -137,7 +139,7 @@ export function createMetroDisplay(tc, canvas) {
         const touch = e.changedTouches[0];
         const { mx, my } = getCanvasPoint(touch.clientX, touch.clientY);
         const { usable, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R } = getGeom();
-        dragStartX = mx; dragStartY = my; hasMoved = false;
+        dragStartX = mx; dragStartY = my; tapStartTime = performance.now(); hasMoved = false;
 
         for (let i = 0; i < tc.beatsPerMeasure; i++) {
             const hx = beatX(tc.beatOffsets[i], usable);
@@ -177,7 +179,7 @@ export function createMetroDisplay(tc, canvas) {
     }, { passive: false });
 
     window.addEventListener('touchend', () => {
-        if (!hasMoved && dragging !== null) {
+        if (!hasMoved && (performance.now() - tapStartTime) < TAP_MAX_MS && dragging !== null) {
             tc.beatAccents[dragging] = !tc.beatAccents[dragging];
             drawInternal(lastPlayhead);
         }
