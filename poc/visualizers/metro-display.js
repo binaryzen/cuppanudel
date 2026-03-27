@@ -135,11 +135,11 @@ export function createMetroDisplay(tc, canvas) {
             tc.beatOffsets[dragging] = snapOffset;
             tc.beatVolumes[dragging] = snapVolume;
             tc.beatAccents[dragging] = !tc.beatAccents[dragging];
-            drawInternal(lastPlayhead);
         }
         dragging = null;
         snapOffset = null;
         snapVolume = null;
+        drawInternal(lastPlayhead);
     });
 
     // ── touch interaction ─────────────────────────────────────────────────────
@@ -193,11 +193,11 @@ export function createMetroDisplay(tc, canvas) {
             tc.beatOffsets[dragging] = snapOffset;
             tc.beatVolumes[dragging] = snapVolume;
             tc.beatAccents[dragging] = !tc.beatAccents[dragging];
-            drawInternal(lastPlayhead);
         }
         dragging = null;
         snapOffset = null;
         snapVolume = null;
+        drawInternal(lastPlayhead);
     });
 
     // ── reference grid ────────────────────────────────────────────────────────
