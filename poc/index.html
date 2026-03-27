@@ -165,12 +165,20 @@
             display: none;
         }
 
-        #metro-panel.fullscreen #metro-restore-btn {
+        #metro-panel.fullscreen #metro-restore-btn,
+        #metro-panel:fullscreen #metro-restore-btn {
             display: inline-block;
         }
 
-        #metro-panel.fullscreen #metro-expand-btn {
+        #metro-panel.fullscreen #metro-expand-btn,
+        #metro-panel:fullscreen #metro-expand-btn {
             display: none;
+        }
+
+        #metro-panel:fullscreen {
+            background: #111;
+            padding: 1rem;
+            overflow-y: auto;
         }
 
         /* ── tuner ── */
@@ -233,6 +241,15 @@
                     <button class="fine-btn" id="delay-dec">−</button>
                     <span id="delay-val">0ms</span>
                     <button class="fine-btn" id="delay-inc">+</button>
+                </div>
+            </div>
+            <div class="metro-ctrl-grp">
+                <span class="dim">SNAP</span>
+                <canvas id="snap-knob" width="40" height="40"></canvas>
+                <div class="knob-fine">
+                    <button class="fine-btn" id="snap-dec">−</button>
+                    <span id="snap-val">0</span>
+                    <button class="fine-btn" id="snap-inc">+</button>
                 </div>
             </div>
             <button id="metro-btn" disabled>▶ Start</button>

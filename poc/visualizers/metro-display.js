@@ -3,10 +3,11 @@ const PAD_R    = 10;
 const MIN_GAP  = 0.025;
 const FLASH_MS = 200;
 
-const C_DOWN     = '#4fc';
-const C_BEAT     = '#999';
-const C_DRAG     = '#ffe066';
-const C_PLAYHEAD = 'rgba(255,150,30,0.9)';
+const C_DOWN      = '#4fc';
+const C_BEAT      = '#999';
+const C_DRAG      = '#ffe066';
+const C_PLAYHEAD  = 'rgba(255,150,30,0.9)';
+const C_SIXTEENTH = 'rgba(80,150,220,0.45)';
 
 export function createMetroDisplay(tc, canvas) {
     const ctx = canvas.getContext('2d');
@@ -18,14 +19,15 @@ export function createMetroDisplay(tc, canvas) {
 
     // ── dynamic geometry — proportional to current canvas size ────────────────
     function getGeom() {
-        const W          = canvas.width;
-        const H          = canvas.height;
-        const usable     = W - PAD_L - PAD_R;
-        const TIMELINE_Y = Math.round(H * 0.735);              // ~50/68
-        const VOL_MAX_Y  = Math.round(H * 0.147);              // ~10/68
-        const VOL_MIN_Y  = Math.round(H * 0.647);              // ~44/68
-        const HANDLE_R   = Math.max(4, Math.round(H * 0.088)); // ~6/68, min 4
-        return { W, H, usable, TIMELINE_Y, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R };
+        const W            = canvas.width;
+        const H            = canvas.height;
+        const usable       = W - PAD_L - PAD_R;
+        const TIMELINE_Y   = Math.round(H * 0.735);              // ~50/68
+        const VOL_MAX_Y    = Math.round(H * 0.147);              // ~10/68
+        const VOL_MIN_Y    = Math.round(H * 0.647);              // ~44/68
+        const HANDLE_R     = Math.max(4, Math.round(H * 0.088)); // ~6/68, min 4
+        const SIXTEENTH_TOP = Math.round(H * 0.44);              // ~30/68, start of 16th note lines
+        return { W, H, usable, TIMELINE_Y, VOL_MAX_Y, VOL_MIN_Y, HANDLE_R, SIXTEENTH_TOP };
     }
 
     function beatX(offset, usable)            { return PAD_L + offset * usable; }
@@ -42,6 +44,38 @@ export function createMetroDisplay(tc, canvas) {
             mx: (clientX - rect.left) * scaleX,
             my: (clientY - rect.top)  * scaleY,
         };
+    }
+
+    // ── grid snapping ─────────────────────────────────────────────────────────
+    function snapToGrid(raw) {
+        const threshold = tc.snapThreshold || 0;
+        if (threshold <= 0) return raw;
+
+        const N = tc.beatsPerMeasure;
+        let nearest = null;
+        let nearestDist = threshold;
+
+        // beat, 8th, and 16th note positions
+        for (let i = 0; i < N; i++) {
+            for (const sub of [0, 0.25, 0.5, 0.75]) {
+                const pos  = (i + sub) / N;
+                const dist = Math.abs(raw - pos);
+                if (dist < nearestDist) { nearestDist = dist; nearest = pos; }
+            }
+        }
+        // beat N (right edge)
+        if (Math.abs(raw - 1) < nearestDist) { nearestDist = Math.abs(raw - 1); nearest = 1 - MIN_GAP; }
+
+        // triplet positions
+        for (let i = 0; i < N; i++) {
+            for (const sub of [1/3, 2/3]) {
+                const pos  = (i + sub) / N;
+                const dist = Math.abs(raw - pos);
+                if (dist < nearestDist) { nearestDist = dist; nearest = pos; }
+            }
+        }
+
+        return nearest !== null ? nearest : raw;
     }
 
     // ── mouse interaction ─────────────────────────────────────────────────────
@@ -68,7 +102,7 @@ export function createMetroDisplay(tc, canvas) {
         const { usable, VOL_MAX_Y, VOL_MIN_Y } = getGeom();
 
         if (dragging > 0) {
-            const raw = xToOffset(mx, usable);
+            const raw = snapToGrid(xToOffset(mx, usable));
             const lo  = tc.beatOffsets[dragging - 1] + MIN_GAP;
             const hi  = dragging < tc.beatsPerMeasure - 1
                 ? tc.beatOffsets[dragging + 1] - MIN_GAP
@@ -109,7 +143,7 @@ export function createMetroDisplay(tc, canvas) {
         const { usable, VOL_MAX_Y, VOL_MIN_Y } = getGeom();
 
         if (dragging > 0) {
-            const raw = xToOffset(mx, usable);
+            const raw = snapToGrid(xToOffset(mx, usable));
             const lo  = tc.beatOffsets[dragging - 1] + MIN_GAP;
             const hi  = dragging < tc.beatsPerMeasure - 1
                 ? tc.beatOffsets[dragging + 1] - MIN_GAP
@@ -125,12 +159,28 @@ export function createMetroDisplay(tc, canvas) {
 
     // ── reference grid ────────────────────────────────────────────────────────
     function drawReferenceGrid(geom) {
-        const { usable, TIMELINE_Y, VOL_MAX_Y, HANDLE_R } = geom;
+        const { usable, TIMELINE_Y, VOL_MAX_Y, HANDLE_R, SIXTEENTH_TOP } = geom;
         const N       = tc.beatsPerMeasure;
         const gridTop = VOL_MAX_Y + HANDLE_R + 2;
         const tripTop = VOL_MAX_Y + HANDLE_R + 10;
 
+        // 16th note subdivisions (blue, short)
         ctx.lineWidth = 1;
+        ctx.strokeStyle = C_SIXTEENTH;
+        ctx.setLineDash([2, 4]);
+        for (let i = 0; i < N; i++) {
+            const from = i / N;
+            const to   = (i + 1) / N;
+            for (const frac of [0.25, 0.5, 0.75]) {
+                const x = beatX(from + (to - from) * frac, usable);
+                ctx.beginPath();
+                ctx.moveTo(x, SIXTEENTH_TOP);
+                ctx.lineTo(x, TIMELINE_Y);
+                ctx.stroke();
+            }
+        }
+
+        // beat subdivision lines (green, tall)
         ctx.strokeStyle = 'rgba(120,220,120,0.60)';
         ctx.setLineDash([4, 4]);
         for (let i = 1; i < N; i++) {
@@ -141,6 +191,7 @@ export function createMetroDisplay(tc, canvas) {
             ctx.stroke();
         }
 
+        // triplet subdivisions (green, medium)
         ctx.strokeStyle = 'rgba(120,220,120,0.60)';
         ctx.setLineDash([2, 5]);
         for (let i = 0; i < N; i++) {
