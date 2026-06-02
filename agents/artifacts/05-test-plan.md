@@ -16,7 +16,7 @@ HTML-only changes (`index-html-*` components) are listed in coverage_gaps with r
 "HTML-only change; verified by visual inspection and browser test" since they have no 
 JavaScript integration test surface.
 
-**Total Test Cases**: 37 integration tests + 1 unit test (test-runner self-check)
+**Total Test Cases**: 51 integration tests + 1 unit test (test-runner self-check)
 
 ---
 
@@ -490,18 +490,34 @@ sampleSets: []"
       No error toast is shown
     determinism_note: "Mocked File Picker API"
 
-  - id: "tc-030"
+  - id: "tc-030a"
     type: integration
     component_id: audio/recordings-provider
-    description: "RecordingsProvider normalizes undefined (from pool) to null for missing clips"
+    description: "RecordingsProvider.browse() returns a snapshot array of pool clips"
+    inputs: |
+      Create RecordingsProvider with mock PoolRef containing 3 SampleClips
+      pool.clips = [clip1, clip2, clip3]
+      Call browse()
+    expected_output: |
+      browse() returns Promise resolving to ContentItem[] of length 3
+      Each ContentItem.id === corresponding clip.id
+      Each ContentItem.label === corresponding clip.label
+      Mutating returned array does not affect pool.clips (snapshot semantics)
+    determinism_note: "Deterministic array mapping and snapshotting"
+
+  - id: "tc-030b"
+    type: integration
+    component_id: audio/recordings-provider
+    description: "RecordingsProvider.import() rejects with error when buffer not found in pool"
     inputs: |
       Create RecordingsProvider with mock PoolRef
-      pool.getBuffer() returns undefined for a clip id
-      Call provider.getSample(index) for that slot
+      item = {id:'clip-1', label:'Test', _bufferId:'audio-buf-123'}
+      pool.getBuffer('audio-buf-123') returns undefined
+      Call import(item, mockCtx)
     expected_output: |
-      getSample returns null (not undefined)
-      console.warn is logged indicating buffer not found
-    determinism_note: "Deterministic normalization"
+      import() returns Promise that REJECTS (does not resolve)
+      Error message is 'RecordingsProvider: buffer not found for id audio-buf-123'
+    determinism_note: "Deterministic promise rejection"
 
   # ────────────────────────────────────────────────────────────────────────────
   # LANE-D (pt 3): pool/media-pool-minor
@@ -555,19 +571,22 @@ sampleSets: []"
   - id: "tc-034"
     type: integration
     component_id: ui/sample-set-picker
-    description: "SampleSetPicker constructs MediaPoolSampleProvider and calls onProviderChange"
+    description: "SampleSetPicker calls onProviderChange with correct arguments on confirmation"
     inputs: |
-      Create picker with registry, pool, tc, metronome
+      Create picker with registry, pool, tc, onProviderChange callback
+      User selects 'New sample set…' option
+      User enters name 'Custom Clicks'
       User taps slot 0 → selects clip 'clip-id-1'
       User taps slot 1 → selects clip 'clip-id-2'
       User taps 'Confirm'
     expected_output: |
-      onProviderChange callback is invoked with a SampleProvider instance
-      Provider.getSample(0) returns clip 'clip-id-1'
-      Provider.getSample(1) returns clip 'clip-id-2'
-      Picker calls registry.register(provider)
-      Updates tc.clickProviderRef = provider.id
-    determinism_note: "Deterministic UI state flow"
+      onProviderChange callback is invoked exactly once
+      First argument is a string (the new provider's id, e.g., 'sample-set:custom-clicks')
+      Second argument is a SampleProvider instance (fully constructed MediaPoolSampleProvider)
+      The provider instance has getSample(0) returning clip-id-1 buffer and getSample(1) returning clip-id-2 buffer
+      Picker does NOT call registry.register() itself — that responsibility belongs to main.js via the callback
+      Picker does NOT modify tc.clickProviderRef — that responsibility belongs to main.js via the callback
+    determinism_note: "Deterministic UI state flow and callback invocation"
 
   # ────────────────────────────────────────────────────────────────────────────
   # LANE-F (pt 1): config/preset-store
@@ -723,6 +742,128 @@ sampleSets: []"
       Drop target persists across multiple file drops
     determinism_note: "Mocked file drop events"
 
+  # ────────────────────────────────────────────────────────────────────────────
+  # PRIORITY ADVISORY GAPS (SA-identified)
+  # ────────────────────────────────────────────────────────────────────────────
+
+  - id: "tc-045"
+    type: integration
+    component_id: config/property-mapper
+    description: "property-mapper serialize() fills defaults for absent fields"
+    inputs: |
+      Schema: [{key:'bpm', type:'int', default:120}]
+      Source: {}
+      Call serialize(schema, source)
+    expected_output: |
+      Returns {bpm:120} (default value fills the absent field)
+    determinism_note: "Deterministic default filling"
+
+  - id: "tc-046"
+    type: integration
+    component_id: config/property-mapper
+    description: "property-mapper serialize() uses source values over defaults and omits extra keys"
+    inputs: |
+      Schema: [{key:'bpm', type:'int', default:120}]
+      Source: {bpm:90, extraKey:999}
+      Call serialize(schema, source)
+    expected_output: |
+      Returns {bpm:90} (source value overrides default)
+      extraKey is NOT in result (extra keys omitted per spec)
+    determinism_note: "Deterministic serialization with key filtering"
+
+  - id: "tc-047"
+    type: integration
+    component_id: ui/edit-config-modal
+    description: "Edit config modal Cancel action closes without calling importConfig"
+    inputs: |
+      Create and open modal with mock component
+      User makes edits to textarea
+      Click Cancel button
+    expected_output: |
+      Modal closes
+      component.importConfig() is NOT called
+      No error toast is shown
+    determinism_note: "Deterministic state cleanup"
+
+  - id: "tc-048"
+    type: integration
+    component_id: ui/edit-config-modal
+    description: "Edit config modal Escape key closes without calling importConfig"
+    inputs: |
+      Create and open modal with mock component
+      User makes edits to textarea
+      Press Escape key
+    expected_output: |
+      Modal closes (same behavior as Cancel)
+      component.importConfig() is NOT called
+    determinism_note: "Deterministic keyboard handling"
+
+  - id: "tc-049"
+    type: integration
+    component_id: ui/edit-config-modal
+    description: "Edit config modal shows parse error inline and keeps modal open on malformed YAML"
+    inputs: |
+      Create and open modal with mock component
+      User enters malformed YAML: "{ bad yaml: : }"
+      Click Apply
+    expected_output: |
+      jsyaml.load throws and error is caught
+      Error message is displayed inline in the modal
+      Modal remains open (does not close)
+      component.importConfig() is NOT called
+    determinism_note: "Deterministic error handling and display"
+
+  - id: "tc-050"
+    type: integration
+    component_id: config/preset-store
+    description: "PresetStore.save() throws RangeError on out-of-bounds index"
+    inputs: |
+      Create preset store with MAX_PRESETS=8
+      Try to call save(8, snapshot)
+    expected_output: |
+      Throws RangeError
+      Error message contains 'index out of bounds: 8'
+      No slot is modified
+    determinism_note: "Deterministic bounds checking"
+
+  - id: "tc-051"
+    type: integration
+    component_id: config/preset-store
+    description: "PresetStore initializes with in-memory fallback when localStorage is malformed"
+    inputs: |
+      Mock localStorage.getItem('cuppanudel.presets.v1') to return '{invalid json}'
+      Create preset store via createPresetStore()
+    expected_output: |
+      Store initializes with 8 null slots (in-memory fallback)
+      console.warn is logged with parse error message
+      localStorage.setItem is not called (error is not propagated)
+    determinism_note: "Deterministic error recovery"
+
+  - id: "tc-052"
+    type: integration
+    component_id: ui/preset-bank
+    description: "PresetBank Save button enters save mode, highlighting all slots"
+    inputs: |
+      Create preset bank
+      Click Save button
+    expected_output: |
+      All 8 slot buttons enter a highlighted state (visual feedback)
+      Clicking any slot in save mode calls store.save(index, snapshot) and exits save mode
+    determinism_note: "Deterministic UI state transition"
+
+  - id: "tc-053"
+    type: integration
+    component_id: ui/preset-bank
+    description: "PresetBank snapshotFrom includes clickProviderRef field"
+    inputs: |
+      Create preset bank with tc where tc.clickProviderRef = 'built-in:default'
+      In save mode, click slot 0
+      Inspect the snapshot passed to store.save()
+    expected_output: |
+      Snapshot object includes clickProviderRef field
+      snapshot.clickProviderRef === 'built-in:default'
+    determinism_note: "Deterministic snapshot construction"
+
 coverage_gaps:
   - requirement: "index-html-global-toolbar (lane-c): DOM structure and button ids"
     rationale: "HTML-only change; verified by visual inspection and browser test"
@@ -744,13 +885,21 @@ coverage_gaps:
     rationale: "Cross-module Web Audio graph assembly tested via mocked OfflineAudioContext"
   - requirement: "Drag-and-drop file import and decodeAudioData"
     rationale: "Requires browser drop event and actual audio decoding; browser acceptance test"
+  - requirement: "config/property-mapper validateAndApply() unit-level behavior (type checking, min/max validation, exactLength reference logic)"
+    rationale: "Covered by IA unit tests in poc/config/property-mapper.test.js; tc-002 through tc-004 and tc-045/tc-046 cover key integration scenarios"
+  - requirement: "ui/preset-bank Save mode UI visual feedback (CSS classes, slot highlighting)"
+    rationale: "Visual/CSS criterion; tc-052 verifies the state transition and callback firing, but DOM styling verified by manual visual test"
+  - requirement: "ui/edit-config-modal Ctrl+Enter and Cmd+Enter keyboard shortcuts"
+    rationale: "Browser keyboard event handling; mocked in tc-049 parse error test, but actual key event binding verified by manual test"
+  - requirement: "config/preset-store Clear() method bounds checking and localStorage persistence"
+    rationale: "Deferred: low risk, clear() mirrors save() bounds semantics; tc-050 covers save() bounds; IA unit tests cover clear() persistence"
 
 verdict: ready-for-review
 ```
 
 ---
 
-## StatusReport — 05-ta-test-suite (Phase 1)
+## StatusReport — 05-ta-test-suite (Phase 1 – Revision)
 
 ```yaml
 agent_role: testing-agent
@@ -758,25 +907,34 @@ task_id: 05-ta-test-suite
 phase: 1
 status: blocked
 completed_steps:
-  - "Read all 24 ComponentDefinition files"
-  - "Read DesignValidation artifact and identified blocking issues"
-  - "Analyzed cross-component contracts and integration surfaces"
-  - "Wrote comprehensive TestPlan covering 44 test cases (43 integration + 1 unit)"
-  - "Documented coverage gaps for HTML-only and browser API components"
-  - "Verified test cases align with ComponentDefinition success/failure criteria"
+  - "Received SA validation findings with two BLOCKING items and priority advisory gaps"
+  - "Revised tc-030: split into tc-030a (browse() snapshot contract) and tc-030b (import() rejection on missing buffer)"
+  - "Revised tc-034: scoped to onProviderChange callback only; removed assertions about registry.register() and tc.clickProviderRef (main.js responsibility)"
+  - "Added test cases for priority advisory gaps (tc-045 through tc-053)"
+  - "  tc-045/tc-046: property-mapper serialize() with defaults and key filtering"
+  - "  tc-047/tc-048/tc-049: edit-config-modal Cancel, Escape, and malformed YAML error handling"
+  - "  tc-050/tc-051: preset-store bounds checking and localStorage error recovery"
+  - "  tc-052/tc-053: preset-bank Save mode and snapshotFrom clickProviderRef"
+  - "Expanded coverage_gaps to explicitly defer remaining advisory items with rationale"
 next_steps:
-  - "Await Solutions Architect validation of TestPlan"
-  - "Receive approval or revision requests from SA"
-  - "Implement integration test code in poc/tests/ (Phase 2)"
+  - "Await coordinator confirmation that SA blocking findings (tc-030a/b, tc-034) are resolved"
+  - "Proceed to Phase 2 (test implementation) after approval"
+  - "Implement all 52 integration tests in poc/tests/ using test-runner harness"
   - "Execute test suite against Implementation Agent deliverables"
 blockers:
-  - "Waiting for coordinator to route TestPlan to Solutions Architect for validation"
-  - "Cannot proceed to Phase 2 (test implementation) until TestPlan is approved"
+  - "Waiting for coordinator to confirm revised TestPlan addresses all SA blocking items"
+  - "Cannot proceed to Phase 2 (test implementation) until revised plan is approved"
 notes:
-  - "DesignValidation identified two blocking issues in ComponentDefinitions that must be resolved before implementation:"
-  - "  1. audio/media-pool-sample-provider: incorrect dependency on config/sample-provider-registry (should be removed)"
-  - "  2. ui/preset-bank: ambiguity about metronome.restart() semantics vs beat-0-reset requirement"
-  - "TestPlan is scoped conservatively to integration surfaces only; unit tests (single-component tests) are IA responsibility"
-  - "Browser API components (File Picker, Clipboard, Drag-drop, Web Audio) are tested at integration level with mocks; acceptance testing in browser deferred"
-  - "All 43 integration tests use deterministic inputs/mocks; no flaky time-dependent tests"
+  - "SA BLOCKING FINDINGS ADDRESSED:"
+  - "  1. tc-030 (wrong-target): RecordingsProvider is ContentProvider not SampleProvider"
+  - "     → Replaced with tc-030a (browse() snapshot contract) and tc-030b (import() rejection semantics)"
+  - "  2. tc-034 (wrong-target): Picker scope excludes registry.register() and tc.clickProviderRef updates"
+  - "     → Rewritten to test only onProviderChange callback contract; responsibility moved to main.js (tc-042)"
+  - "PRIORITY ADVISORY COVERAGE:"
+  - "  - property-mapper serialize(): new tests tc-045/tc-046 cover defaults and key filtering"
+  - "  - edit-config-modal Cancel/Escape/parse-error: new tests tc-047/tc-048/tc-049"
+  - "  - preset-store bounds/malformed-localStorage: new tests tc-050/tc-051"
+  - "  - preset-bank Save mode/snapshotFrom: new tests tc-052/tc-053"
+  - "Total test case count increased from 44 to 52 (51 integration + 1 unit)"
+  - "All tests use deterministic inputs/mocks; no flaky time-dependent tests"
 ```

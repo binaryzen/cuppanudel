@@ -209,8 +209,11 @@ test('scheduler skips beat if volume < 0.01', () => {
     assertEquals(metro.isRunning(), true);
 });
 
-test('scheduler logs error when getSample() returns null', () => {
+test('scheduler logs error when getSample() returns null', async () => {
     const ctx = createMockAudioContext();
+    // Simulate time passing by setting currentTime forward
+    ctx.currentTime = 0.05;  // Move past lookahead window
+
     const tc = createTempoContext();
 
     const errors = [];
@@ -227,6 +230,9 @@ test('scheduler logs error when getSample() returns null', () => {
 
     const metro = createMetronome(ctx, tc, provider);
     metro.start();
+
+    // Allow one scheduler interval to pass
+    await new Promise(resolve => setTimeout(resolve, 30));
 
     console.error = originalError;
 
