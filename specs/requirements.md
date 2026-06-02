@@ -173,13 +173,97 @@ RAF loop calls all visualizer `.draw()` methods each frame. Metronome runs on `s
 
 ---
 
+## Planned Features
+
+---
+
+### Alignment Monitor (Waveform Behind Playhead)
+
+An additional canvas layer (or a dedicated canvas behind the metro grid) that shows a
+rolling waveform history aligned to the measure timeline. Goal: let the user play a
+sample or live performance alongside the metronome and visually measure timing alignment.
+
+Key requirements:
+
+- Displays the last 2–4 measures of waveform data, scrolling left as time advances.
+- X-axis mirrors the beat-grid coordinate space so waveform transients line up directly
+  with beat markers, giving an immediate visual of early / late hits.
+- Y-axis is amplitude (same convention as the waveform oscilloscope).
+- Waveform is drawn at low opacity so the beat-grid handles and grid lines remain legible
+  on top.
+- Source is the shared waveform `AnalyserNode` (covers both mic and playback nodes).
+- Data capture is ring-buffer based: one sample per canvas pixel column, refreshed each
+  RAF frame from `getFloatTimeDomainData()`, scrolled by the distance the playhead
+  advanced since the last frame.
+- Optionally, the last-measure trace could be shown in a distinct colour from older
+  measures to give depth cues without clutter.
+
+Open questions:
+- [ ] How many measures of history is useful? (Start with 2, make configurable.)
+- [ ] Draw continuously or freeze-on-downbeat for a cleaner stroboscopic read?
+- [ ] Should amplitude peaks be RMS-smoothed (less noise) or raw (more transient detail)?
+
+---
+
+### File Import (Loops and Backing Tracks)
+
+Users need to load audio files from external sources — in particular loops exported from
+hardware looper pedals — and play them back inside the app. This closes the loop (no pun
+intended) between the media pool, which can record and play, and external audio assets.
+
+Key requirements:
+
+- Accept audio files via `<input type="file">` or drag-and-drop onto the sample browser.
+- Supported formats: WAV, MP3, OGG, M4A, AIFF — whatever `AudioContext.decodeAudioData`
+  accepts in the target browser.
+- Decoded `AudioBuffer` is inserted into the `BufferTable`; a `SampleClip` entry is
+  created with the filename as the default label.
+- Files that exceed `MAX_RECORD_DURATION_MS` (30 s) are accepted with a warning; that
+  constant is tuned for recording latency and should not gate import.
+- Loop files from hardware loopers are often unnormalised — import should not alter gain;
+  the per-clip `gain` field is the user's tool for level matching.
+- Drag-and-drop should work on the sample browser panel (desktop) and via the file picker
+  on mobile (no drag support there).
+- See `specs/content-service.md` for the broader abstraction that file import belongs to.
+
+Resolves open question: *"File input: audio file playback as an alternative stream source?"*
+
+---
+
+### Tempo Presets
+
+Users have recurring configurations (time signature, swing feel, accent pattern, BPM) for
+different songs or practice contexts. They need to save and recall them instantly without
+re-dialling everything by hand.
+
+Key requirements:
+
+- A preset stores the full `TempoContext` snapshot: `bpm`, `beatsPerMeasure`,
+  `beatOffsets`, `beatVolumes`, `beatAccents`.
+- Bank of named slots (8–16 slots suggested; exact count TBD). Each slot has a short
+  user-editable name (instrument/song name, genre, etc.).
+- Persist to `localStorage` keyed under the app namespace.  Empty slots shown visually
+  as "—" and are overwritable.
+- **Save:** one-tap / click from the metro panel header (or a dedicated `…` menu) writes
+  current `tc` state to the selected slot.
+- **Recall:** tapping a filled slot restores state instantly; metronome restarts from
+  beat 0 at the new BPM.
+- Slots are shown in a compact row or grid near the metro panel; full preset name visible
+  on hover/focus.
+- Preset UI should degrade gracefully if `localStorage` is unavailable (private browsing
+  on iOS).
+
+Resolves open question: *"Persist session settings (BPM, tuning reference, etc.) across page loads?"* (partially — BPM/metronome settings covered here; global session persistence is separate).
+
+---
+
 ## Open Questions
 
-- [ ] File input: audio file playback as an alternative stream source?
+- [x] **File input: audio file playback** → addressed in Planned Features above
 - [ ] Multiple simultaneous visualizers on screen?
 - [x] **Session Context reactive vs polled** → resolved: polled (RAF loop); sufficient for POC
 - [ ] Target instruments beyond guitar (pitch range, display conventions)?
-- [ ] Persist session settings (BPM, tuning reference, etc.) across page loads?
+- [ ] Persist global session settings across page loads (tuning reference, visual delay, etc.)?
 - [ ] Port recorder from `ScriptProcessorNode` to `AudioWorklet` for `app/`
 - [ ] Fundamental frequency detection (autocorrelation / HPS) for more accurate tuner on guitar low strings
 - [ ] Framework choice for `app/` build
