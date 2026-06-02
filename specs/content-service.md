@@ -58,8 +58,12 @@ interface ContentProvider {
   label: string                      // display name
   icon?: string                      // optional SVG or emoji
 
-  // Returns a flat or nested list of ContentItems available from this source.
-  // May be async (e.g., a network fetch or directory read).
+  // Returns a flat list of ContentItems available from this source.
+  // For POC: always returns ContentItem[] (no pagination). Pagination is an app/ concern.
+  // For picker-based providers (LocalFileProvider): browse() triggers the file picker
+  // and returns the user-selected files as ContentItems. It does not return a persistent
+  // enumerable list — the UI must not assume browse() is repeatable without user interaction.
+  // For enumerable providers (RecordingsProvider): browse() returns the current item list.
   browse(): Promise<ContentItem[]>
 
   // Optional: search/filter if the provider supports it.
@@ -151,9 +155,9 @@ decoded and stored, the clip is fully owned by the pool.
 
 - **Streaming preview:** A provider may optionally expose a `preview(item)` method
   returning a URL or stream for low-latency audition before committing to a full import.
-- **Pagination:** `browse()` may return a `{ items, nextPage }` shape if the provider
-  supports it (e.g., a large cloud library). The UI should handle both flat arrays and
-  paginated responses.
+- **Pagination (app/ only):** `browse()` always returns `ContentItem[]` in the POC. In
+  `app/`, the interface may be extended to return `{ items: ContentItem[], nextPage?: () => Promise<...> }`
+  for large remote libraries. The POC UI may assume a flat array.
 - **Write-back (future):** Providers may optionally implement `export(clip, buffer)` to
   push a finished recording back to the source (e.g., save back to a cloud library or
   write a file into a watched directory).
@@ -168,7 +172,7 @@ decoded and stored, the clip is fully owned by the pool.
 - [ ] File System Access API has limited Safari support. Define a graceful degradation
   path: FSAA where available, `<input type="file">` otherwise, same `ContentItem`
   shape returned either way.
-- [ ] Should `ContentItem.metadata` carry loop-point markers? If so, the media pool
-  `SampleClip` schema needs `loopStart`/`loopEnd` frame fields (currently not present).
+- [x] **`ContentItem.metadata` loop-point markers** → Not in POC. `SampleClip` schema is
+  not extended with `loopStart`/`loopEnd` in this phase. Deferred to `app/`.
 - [ ] How does the content browser surface per-provider error states (e.g., network
   timeout, device disconnected)?

@@ -30,7 +30,18 @@ design decision from specifications and the LaneMap — not from personal prefer
    - **Dependencies**: What other component IDs this depends on. What it must NOT
      depend on (to prevent cycles or SoC violations).
 
-2. **Test Review**: After Implementation and Testing Agents complete their work, review
+2. **Code Review**: After Implementation Agents deliver source files, review the production
+   code for:
+   - **Coherence** — does the implementation match the ComponentDefinition interface and
+     behaviour exactly? No extra behaviour, no missing behaviour.
+   - **Clarity** — is the code readable without comments explaining *what* it does?
+     Are identifiers well-named? Is control flow obvious?
+   - **Edge cases** — are all failure criteria handled? Are there unhandled states not
+     in the spec that the implementation should still guard against?
+   - **Conventions** — does the code follow the project coding conventions (no class syntax
+     unless warranted, no bare specifiers, no dead code, null-not-undefined from getSample, etc.)?
+
+3. **Test Review**: After Implementation and Testing Agents complete their work, review
    the TestPlan and implemented test files for:
    - Determinism — does every test produce the same result given the same implementation?
    - Coverage — does the test suite cover every success and failure criterion?
@@ -41,11 +52,13 @@ design decision from specifications and the LaneMap — not from personal prefer
 - `LaneMap` (from Solutions Architect)
 - `SpecReview` (from Solutions Architect — context for component definition)
 - Specification documents (raw files — read directly)
+- Source files (from Implementation Agent — for code review)
 - `TestPlan` + test implementation files (from Testing Agent — for review)
 
 ## Output Artifact Types You Produce
 
 - `ComponentDefinition` (one per component, one file per component)
+- `CodeReview` (per-component findings on coherence, clarity, edge cases, conventions)
 - `TestReview` (approval or rejection of test implementation, with per-test findings)
 - `Escalation` (to coordinator when a specification is ambiguous)
 

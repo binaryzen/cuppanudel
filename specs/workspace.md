@@ -85,10 +85,15 @@ Rules:
 
 ### YAML library
 
-No bundler means no npm. Vendor `js-yaml` as a single UMD file at `lib/js-yaml.min.js`
+No bundler means no npm. Vendor `js-yaml` as a single UMD file at `poc/lib/js-yaml.min.js`
 (MIT, available from the js-yaml GitHub releases). Load as a plain `<script>` before any
-module scripts in `index.html`. Exposes `jsyaml.load()` and `jsyaml.dump()` as globals.
-No other YAML dependency is needed.
+module scripts in `index.html`. Exposes `jsyaml` as a global.
+
+**Security requirement**: Always parse with `jsyaml.load(text, { schema: jsyaml.CORE_SCHEMA })`
+(or `jsyaml.safeLoad(text)` in older versions). Never call bare `jsyaml.load(text)` — the
+default schema executes JavaScript embedded in `!!js/function` YAML tags, which is a known
+deserialization attack vector. `CORE_SCHEMA` restricts parsing to standard scalars, sequences,
+and mappings only. Serialise with `jsyaml.dump()` (safe by default).
 
 ### Export
 
@@ -96,33 +101,43 @@ Three paths, all producing the same YAML string:
 
 | Trigger | Behaviour |
 |---|---|
-| "Export workspace" in global toolbar or page context menu | Triggers a browser file download as `workspace.yaml` using a Blob + object URL |
-| "Copy workspace YAML" same menu | Writes string to clipboard via `navigator.clipboard.writeText()` |
+| "Export workspace" button in page header | Triggers a browser file download as `workspace.yaml` using a Blob + object URL |
+| "Copy YAML" button adjacent to Export | Writes string to clipboard via `navigator.clipboard.writeText()` |
 | Component context menu → "Copy Config" | Writes only that component's section to clipboard |
+
+The page header is a simple `<header>` element above the panel stack in `index.html`,
+containing the app title and the Export / Copy YAML buttons. No right-click page context
+menu is required.
 
 Export always writes all sections explicitly, including `sampleSets: []` when empty, so
 the file is a clear complete record.
 
 ### Import (file drop)
 
-Drop target: the entire `document` (dragover + drop listeners). Any `.yaml` or `.yml`
-file dropped anywhere on the page is treated as a workspace import attempt.
+Drop target: the entire `document` (dragover + drop listeners). Any `.yaml`, `.yml`, or
+`.json` file dropped anywhere on the page is treated as a workspace import attempt.
 
 Flow:
 
-1. Read file as text (`FileReader.readAsText`).
-2. Parse with `jsyaml.load()`. If parse fails, show error toast; stop.
-3. Validate with the property mapper (see §2). Collect all validation errors.
-4. If errors exist, show error panel listing each field and reason; stop — do not apply any
+1. **Size check**: if `file.size > 1_048_576` (1 MB), show error toast ("File too large
+   for a workspace config") and stop. A valid workspace YAML is never larger than ~10 KB;
+   1 MB is a generous cap that prevents main-thread freeze from a very large YAML parse.
+2. Read file as text (`FileReader.readAsText`).
+3. **Parse**: if the filename ends in `.json`, parse with `JSON.parse()`. Otherwise, parse
+   with `jsyaml.load(text, { schema: jsyaml.CORE_SCHEMA })`. If parsing throws, show error
+   toast with the parser's message and stop. Do not attempt cross-format fallback (a `.yaml`
+   file containing JSON is a user error, not a supported format).
+4. Validate with the property mapper (see §2). Collect all validation errors.
+5. If errors exist, show error panel listing each field and reason; stop — do not apply any
    state.
-5. If no errors, show a confirmation dialog: "Import workspace? This will replace your
-   current settings." with Apply / Cancel. Skip confirmation if imported values are
-   identical to current state.
-6. On Apply, call each component's `importConfig(slice)` in dependency order:
+6. If no errors, show a confirmation dialog: "Import workspace? This will replace your
+   current settings." with Apply / Cancel. Skip the confirmation if all imported values are
+   equal to current state. Equality check: strict `===` for strings, ints, and bools; for
+   floats use tolerance `|a - b| < 1e-6`; for arrays, compare element-wise with the same
+   rules.
+7. On Apply, call each component's `importConfig(slice)` in dependency order:
    `sampleSets` first (so providers are registered before `clickProviderRef` is resolved),
    then `global`, then `metronome`, then `presets`.
-
-A `.json` file with the same schema is also accepted (step 1 branches on extension).
 
 ---
 
@@ -150,19 +165,30 @@ descriptors passed by each component.
 
 ### `validateAndApply(schema, source, target) → string[]`
 
-Walks the schema entries. For each entry:
+**Two-pass algorithm** — validate fully first, then write atomically:
 
+**Pass 1 — collect:**
+Walk every schema entry. For each entry:
 - If `required` and key absent in `source`: push `"<key>: required field missing"`.
 - If key present:
-  - Type-check. Wrong JS type → error: `"<key>: expected <type>, got <actualType>"`.
-  - Range-check scalars: out of range → **clamp with warning** (not an error), e.g.
-    `"<key>: 350 out of range 20–300, clamped to 300"`.
-  - Array length check (`exactLength` or `minLength`/`maxLength`): mismatch → error.
-  - Array element type and range: same rules applied per-element; element errors report
-    as `"<key>[2]: ..."`.
-  - If valid (or clamped): write `target[key] = <value or clamped value>`.
+  - Type-check. Wrong JS type → push error `"<key>: expected <type>, got <actualType>"`.
+  - Range-check scalars: out of range → clamp and push warning (not an error), e.g.
+    `"<key>: 350 out of range 20–300, clamped to 300"`. Store the clamped value.
+  - `exactLength` check: look up the named field in `source` (not `target`). If the
+    named field is itself missing or invalid, treat the current field's length as
+    unchecked (do not produce a spurious length error). If the named field is valid,
+    compare array lengths; mismatch → push error.
+  - `minLength`/`maxLength`: apply if present; mismatch → push error.
+  - Array element type and range: same rules per-element; element errors report as
+    `"<key>[2]: ..."`.
+  - On success (or clamp): store `{ key, value }` in a local `pending` list.
 
-Returns the error string array. Empty array = success.
+**Pass 2 — apply (only if no errors):**
+If the error array contains any error strings (warnings do not count), return the array
+without modifying `target`. Otherwise, write every `{ key, value }` pair from `pending`
+to `target` atomically. This guarantees `target` is never partially mutated.
+
+Returns the error string array (errors and warnings combined). Empty array = clean success.
 
 ### `serialize(schema, source) → object`
 
@@ -199,7 +225,7 @@ on item selection.
 | Label | Action |
 |---|---|
 | Copy Config | Serialises this component's slice; writes YAML string to clipboard |
-| Paste Config | Reads clipboard; parses; validates against this component's schema only; applies if valid; shows inline error banner if invalid |
+| Paste Config | Reads clipboard via `navigator.clipboard.readText()`; parses; validates against this component's schema only; applies if valid; shows inline error banner if invalid. If `navigator.clipboard.readText` is unavailable or throws a `NotAllowedError`, the "Paste Config" item is hidden (not greyed out) — no fallback text-entry dialog. |
 | Edit Config… | Opens the Edit Config modal (see below) |
 
 ### Edit Config modal
@@ -254,8 +280,9 @@ interface SampleProvider {
   // Must be called once before getSample(). May be async (decode, synthesize, fetch).
   init(ctx: AudioContext): Promise<void>
 
-  // Returns the AudioBuffer for slot `index`, or null if index is out of range.
-  // MUST be synchronous after init() resolves — called on the scheduler hot path.
+  // Returns the AudioBuffer for slot `index`, or null if index is out of range or
+  // the slot is unassigned. MUST return null (never undefined) — callers use
+  // strict null checks. MUST be synchronous after init() resolves — hot path.
   getSample(index: number): AudioBuffer | null
 
   // Optional. Number of slots this provider exposes.
@@ -285,6 +312,8 @@ session. If the ref is invalid, it falls back to `"built-in:default"`.
 
 ### Built-in default provider (`BuiltinClickProvider`)
 
+**Module path**: `poc/audio/builtin-click-provider.js`
+
 Synthesises and caches two `AudioBuffer`s in `init()`. Matches existing behaviour exactly:
 
 | Index | Frequency | Gain | Duration |
@@ -303,10 +332,21 @@ const registry = {
   register(provider: SampleProvider): void,
   get(id: string): SampleProvider | undefined,
   list(): SampleProvider[],
+  // For test teardown only — not part of the production API:
+  _reset(): void,
 }
 ```
 
-`BuiltinClickProvider` is registered at startup with id `"built-in:default"`.
+**Initialization timing**: The registry object is created at module-import time (no
+`AudioContext` dependency). `BuiltinClickProvider` is constructed and registered at
+import time with id `"built-in:default"`. However, `BuiltinClickProvider.init(ctx)`
+(which synthesises the audio buffers) is called lazily — inside the Start button
+handler in `main.js`, immediately after `AudioContext` is created. The metronome start
+is gated on `init()` resolving: `await clickProvider.init(ctx)` before `metronome.start()`.
+
+If `getSample()` is called on `BuiltinClickProvider` before `init()` has resolved (e.g.,
+a race condition), it must return `null` and log `console.error('BuiltinClickProvider not
+initialised')`. The scheduler's null guard will skip that beat rather than throw.
 
 ### MediaPoolSampleProvider
 
@@ -336,15 +376,20 @@ warning names the missing clip.
 
 ## 5. TempoContext additions
 
-Two new fields added to `TempoContext` to support the above:
+Three new fields added to `TempoContext`:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `clickProviderRef` | `string` | `"built-in:default"` | ID of the active `SampleProvider` |
-| `beatAccents` | `bool[]` | `[true, false, ...]` | Already exists; moved here from informal state |
+| `beatAccents` | `bool[]` | `[true, false, ...]` | Already exists informally; formalised here |
+| `snapThreshold` | `float` | `0` | Grid snap radius in normalised offset space (0.0–0.025); 0 = off |
 
-`clickProviderRef` is serialised as part of the `metronome` workspace section. It is not
-per-beat; it applies to all beats.
+`clickProviderRef` is serialised in the `metronome` workspace section; applies to all beats.
+`snapThreshold` is serialised in the `global` workspace section; owned by the metro display.
+The property-mapper schema descriptor for `snapThreshold`: `{ key: 'snapThreshold', type: 'float', min: 0, max: 0.025, default: 0 }`.
+
+`setBeatsPerMeasure(tc, n)` resets `beatOffsets`, `beatVolumes`, and `beatAccents`. It does
+not reset `clickProviderRef` or `snapThreshold`.
 
 ---
 
@@ -353,14 +398,18 @@ per-beat; it applies to all beats.
 Full UI design is deferred. Minimum viable surface for the POC:
 
 - A "Click Sound" row in the metro panel listing the active provider label.
-- Tapping/clicking it opens a picker showing registered providers: "Default (synthesised)"
-  and any user-created sample sets.
-- "New sample set…" in the picker lets the user name a set, then assign media pool clips
-  to slot 0 and slot 1 via the existing sample browser.
-- Created sets are immediately registered and selectable.
+- Tapping/clicking it opens a provider picker listing: "Default (synthesised)" and any
+  user-created sample sets.
+- "New sample set…" in the picker lets the user name the set, then shows a two-slot
+  assignment view (slot 0 = lo click, slot 1 = hi click).
+- **Slot assignment**: tapping an empty slot (or a filled slot to reassign) opens a
+  scrollable list of available media pool clips. Tapping a clip assigns it to that slot.
+  Tapping outside or pressing Escape cancels. There is no drag-and-drop assignment.
+- Once both slots are assigned, the user confirms and the `MediaPoolSampleProvider` is
+  constructed, registered, and immediately selectable.
 
-This is enough to make the click sound configurable without a full sample-management
-browser. A more complete sample-set management panel is a future feature.
+This is enough to make click sounds configurable without a full sample-management
+browser. A more complete management panel is a future feature.
 
 ---
 
@@ -368,29 +417,37 @@ browser. A more complete sample-set management panel is a future feature.
 
 | Question | Decision |
 |---|---|
-| YAML vs JSON | YAML is primary (human-editable); JSON accepted on import as a fallback |
-| YAML library | Vendor `js-yaml` UMD in `lib/js-yaml.min.js`; no bundler needed |
-| Partial import | Apply only present sections; absent sections leave current state unchanged |
+| YAML vs JSON | YAML is primary; JSON (`.json`) accepted on import by extension; no cross-format fallback |
+| YAML parsing mode | Always use `jsyaml.load(text, { schema: jsyaml.CORE_SCHEMA })` — never bare `jsyaml.load()` |
+| YAML library | Vendor `js-yaml` UMD in `poc/lib/js-yaml.min.js`; no bundler needed |
+| Import file size cap | 1 MB; reject with error toast if exceeded |
+| Partial import | Apply only sections present; absent sections leave current state unchanged |
 | Invalid `clickProviderRef` | Fall back to `"built-in:default"`; log a console warning |
 | Wrong-type field | Hard error; import is rejected |
 | Out-of-range scalar | Clamped with a warning; import proceeds |
 | Array length mismatch (`beatOffsets` etc.) | Hard error |
-| Drop zone | Entire `document`; any `.yaml`/`.yml` file |
-| Confirmation on import | Always shown if imported values differ from current state |
+| Drop zone | Entire `document`; any `.yaml`/`.yml`/`.json` file |
+| Confirmation on import | Shown if any imported value differs from current state; identity uses `===` for scalars, `|a-b| < 1e-6` for floats |
 | Context menu on mobile | Long-press ≥ 600 ms with < 20 px movement |
+| Paste Config clipboard unavailable | Hide the menu item; no fallback dialog |
 | Edit modal z-index | 600 (above fullscreen 100, above knob overlay 500) |
-| Presets store `clickProviderRef` | Yes — per preset, so different presets can reference different click sounds |
+| Global workspace export trigger | Dedicated buttons in a `<header>` element at the top of the page |
+| Presets canonical authority | Workspace YAML is the portable canonical form; localStorage is a persistent device-local cache. On workspace import, the imported `presets` section overwrites localStorage |
+| Preset count | `MAX_PRESETS = 8` (added to `constants.js`) |
+| Preset recall during running metronome | Stop and restart from beat 0 at the new BPM |
+| Presets store `clickProviderRef` | Yes — per preset |
 | Fallback when sample set clip is missing | Silence for that slot; console warning; no hard error |
-| `importConfig()` partial-write safety | Must not write any state if returning errors — validate fully first, then apply |
+| `validateAndApply` no-partial-write | Two-pass: collect + validate fully, then write atomically; errors cancel all writes |
+| `validateAndApply` `exactLength` resolution | Named field is looked up in `source`; if missing or invalid, skip the length check (do not error) |
+| `getSample()` return type | Always `AudioBuffer | null` — never `undefined`; providers must normalize misses to `null` |
+| `BuiltinClickProvider` init timing | Registered at module import; `init(ctx)` called lazily in Start handler before `metronome.start()` |
+| `SampleProviderRegistry` test reset | Expose `_reset()` for test teardown only; not part of production API |
+| Slot assignment UI | Tap slot → scrollable pool clip list → tap clip to assign; Escape to cancel |
+| `snapThreshold` ownership | Formal TempoContext field; serialised in `global` workspace section |
+| Accessibility scope for POC | Keyboard nav for modals only (Escape, Ctrl/Cmd+Enter); full proxy/ARIA pattern deferred to `app/` |
+| `importConfig()` partial-write safety | Enforced by `validateAndApply` two-pass algorithm |
 
 ## Remaining Open Questions
 
-- [ ] Should workspace export include `tunerReference` (A4 Hz)? Not exposed as a control
-  yet, but a natural addition when it is.
-- [ ] Should `presets` have a maximum count? (Suggest 32 as a soft UI limit, not a hard
-  schema error.)
-- [ ] Should the Edit Config modal syntax-highlight the YAML? Probably not in the POC
-  (no dependency); consider in `app/`.
-- [ ] Should `MediaPoolSampleProvider` silently use `null` for missing clips, or should
-  it substitute `built-in:default`'s buffer at that index? (Current decision: `null` →
-  silence. Revisit if users find "silent accent beat" confusing.)
+- [ ] Should workspace export include `tunerReference` (A4 Hz)? Not exposed as a control yet.
+- [ ] Should the Edit Config modal syntax-highlight the YAML? Not in POC; consider in `app/`.

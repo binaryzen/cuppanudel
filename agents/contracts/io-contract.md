@@ -91,6 +91,24 @@ verdict: approved | needs-revision
 
 ---
 
+## CodeReview
+
+Produced by: Staff Engineer
+Consumed by: Implementation Agent, coordinator
+
+```yaml
+components_reviewed: [component-id-1, component-id-2]
+findings:
+  - component_id: component-id-1
+    file: poc/config/property-mapper.js
+    type: coherence | clarity | edge-case | convention | other
+    description: "Specific finding with line reference if applicable"
+    severity: blocking | advisory   # blocking = must fix before done; advisory = suggested improvement
+verdict: approved | needs-revision  # needs-revision if any blocking findings remain
+```
+
+---
+
 ## TestPlan
 
 Produced by: Testing Agent (before writing tests)

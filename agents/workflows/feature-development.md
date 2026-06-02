@@ -36,9 +36,11 @@ Coordinator
     │                   │
     │◄──────── CompletionReports (IA × N + TA) ◄──────────────────────────────┘
     │
-    └─spawn──► SE (task 06) ──► TestReview
+    ├─spawn──► SE (task 06b) ──► CodeReview  (concurrent)
+    └─spawn──► SE (task 06)  ──► TestReview  (concurrent)
                                     │
-              [if needs-revision: route back to TA, SE re-reviews]
+              [CodeReview needs-revision: IA fixes blocking findings, SE re-reviews]
+              [TestReview needs-revision: TA revises tests, SE re-reviews]
 ```
 
 ---
@@ -52,6 +54,7 @@ Coordinator
 | IA escalates an ambiguity | Route to SE; SE updates ComponentDefinition; notify IA to continue |
 | TA escalates a cross-component gap | Route to SA; SA advises; SA may update DesignValidation |
 | IA+TA iteration reaches 3 cycles without passing | Escalate to coordinator; coordinator checks if ComponentDefinition is incorrect |
+| SE CodeReview verdict = needs-revision | Route blocking findings to IA; IA fixes; SE re-reviews affected components only |
 | SE TestReview verdict = needs-revision | Route findings to TA; TA revises tests; re-spawn SE task 06 |
 | Any agent escalates to coordinator without a clear answer | Present to user before proceeding |
 
@@ -136,6 +139,8 @@ to a `<task-id>-reports.md` file in `agents/artifacts/`.
 - [ ] Route TA TestPlan to SA for validation; SA advises; TA proceeds
 - [ ] Monitor IA + TA StatusReports; route escalations per decision table above
 - [ ] Wait for all IA CompletionReports + TA CompletionReport
-- [ ] Assemble SE prompt + task 06; spawn SE; wait for CompletionReport
-- [ ] If needs-revision: route to TA, re-review
+- [ ] Assemble SE prompt + task 06b; spawn SE for code review (concurrent)
+- [ ] Assemble SE prompt + task 06; spawn SE for test review (concurrent)
+- [ ] Code review: if needs-revision → route blocking findings to IA → IA fixes → SE re-reviews
+- [ ] Test review: if needs-revision → route to TA → TA revises → SE re-reviews
 - [ ] All green → done

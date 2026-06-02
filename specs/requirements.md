@@ -26,6 +26,7 @@ Holds canonical timing state. Mutated directly by UI controllers; read by metron
 | `beatAccents` | `bool[]` | Per-beat accent flag; true = hi tick (index 1), false = lo tick (index 0) |
 | `visualDelayMs` | `float` | Visual playhead advance in ms to compensate display latency (0–100) |
 | `clickProviderRef` | `string` | ID of the active `SampleProvider`; default `"built-in:default"` |
+| `snapThreshold` | `float` | Grid snap radius in normalised offset space (0.0–0.025); 0 = off |
 
 `setBeatsPerMeasure(tc, n)` resets both `beatOffsets` (even spacing) and `beatVolumes` (all 1.0).
 
@@ -187,29 +188,32 @@ RAF loop calls all visualizer `.draw()` methods each frame. Metronome runs on `s
 
 ### Alignment Monitor (Waveform Behind Playhead)
 
-An additional canvas layer (or a dedicated canvas behind the metro grid) that shows a
-rolling waveform history aligned to the measure timeline. Goal: let the user play a
-sample or live performance alongside the metronome and visually measure timing alignment.
+**Module**: `poc/visualizers/alignment-monitor.js` — new canvas element placed behind
+the beat-grid canvas in the DOM (beat-grid handles and grid lines remain on top).
+
+An additional canvas layer that shows a rolling waveform history aligned to the measure
+timeline. Goal: let the user play a sample or live performance alongside the metronome
+and visually measure timing alignment.
 
 Key requirements:
 
-- Displays the last 2–4 measures of waveform data, scrolling left as time advances.
-- X-axis mirrors the beat-grid coordinate space so waveform transients line up directly
-  with beat markers, giving an immediate visual of early / late hits.
-- Y-axis is amplitude (same convention as the waveform oscilloscope).
-- Waveform is drawn at low opacity so the beat-grid handles and grid lines remain legible
-  on top.
-- Source is the shared waveform `AnalyserNode` (covers both mic and playback nodes).
-- Data capture is ring-buffer based: one sample per canvas pixel column, refreshed each
-  RAF frame from `getFloatTimeDomainData()`, scrolled by the distance the playhead
-  advanced since the last frame.
-- Optionally, the last-measure trace could be shown in a distinct colour from older
-  measures to give depth cues without clutter.
-
-Open questions:
-- [ ] How many measures of history is useful? (Start with 2, make configurable.)
-- [ ] Draw continuously or freeze-on-downbeat for a cleaner stroboscopic read?
-- [ ] Should amplitude peaks be RMS-smoothed (less noise) or raw (more transient detail)?
+- **History depth**: 2 measures. The ring buffer holds exactly 2 measures of pixel columns.
+  (Make it a named constant `ALIGN_MEASURES = 2` for future tunability.)
+- **Draw mode**: continuous — the waveform scrolls left in real-time as the playhead
+  advances. No freeze-on-downbeat. The scroll position is derived from `measureStart` and
+  `nextBeatTime` (same variables the metronome scheduler uses), not from
+  `getPlayheadPosition()`, to avoid drift on BPM changes.
+- **Amplitude**: raw (`getFloatTimeDomainData()` peak per pixel column, no RMS smoothing).
+  Raw amplitude preserves transient detail needed for timing judgement.
+- X-axis mirrors the beat-grid coordinate space so transients align directly with beat
+  markers; gives an immediate visual of early / late hits.
+- Y-axis is amplitude; drawn at low opacity (≈ 0.35) so beat-grid elements remain legible.
+- Source: the shared waveform `AnalyserNode` (covers both mic and playback).
+- Data capture: ring-buffer of `Float32Array`, one entry per canvas pixel column,
+  updated each RAF frame. On each frame, compute how many columns the playhead has
+  advanced since the last frame, shift the ring buffer by that count, and fill the new
+  columns from `getFloatTimeDomainData()` peak samples.
+- The most recent measure's trace is drawn in a slightly brighter tint than older history.
 
 ---
 
@@ -247,21 +251,27 @@ re-dialling everything by hand.
 Key requirements:
 
 - A preset stores the full `TempoContext` snapshot: `bpm`, `beatsPerMeasure`,
-  `beatOffsets`, `beatVolumes`, `beatAccents`.
-- Bank of named slots (8–16 slots suggested; exact count TBD). Each slot has a short
-  user-editable name (instrument/song name, genre, etc.).
-- Persist to `localStorage` keyed under the app namespace.  Empty slots shown visually
-  as "—" and are overwritable.
-- **Save:** one-tap / click from the metro panel header (or a dedicated `…` menu) writes
-  current `tc` state to the selected slot.
-- **Recall:** tapping a filled slot restores state instantly; metronome restarts from
-  beat 0 at the new BPM.
-- Slots are shown in a compact row or grid near the metro panel; full preset name visible
-  on hover/focus.
-- Preset UI should degrade gracefully if `localStorage` is unavailable (private browsing
-  on iOS).
+  `beatOffsets`, `beatVolumes`, `beatAccents`, `clickProviderRef`.
+- **Slot count**: `MAX_PRESETS = 8` (added to `constants.js`). Eight slots in a compact row.
+- Each slot has a short user-editable name (instrument/song name, genre, etc.); empty
+  slots show "—" and are overwritable.
+- **Canonical storage**: `localStorage` under key `cuppanudel.presets.v1` (JSON array of
+  8 entries, null for empty slots). The workspace YAML `presets` section is the portable
+  export form. On workspace import, the imported `presets` array overwrites localStorage.
+- **Save:** one-tap on the desired slot while in "save mode" (a Save button in the preset
+  bank activates save mode, highlights the bank for slot selection). Write current `tc`
+  snapshot to that slot in localStorage.
+- **Recall:** tapping a filled slot outside save mode applies the snapshot:
+  - If the metronome is running: stop it immediately, apply the new config, restart from
+    beat 0. No smooth transition; immediate stop-restart.
+  - If the metronome is stopped: apply the config only; do not auto-start.
+- Slots are shown in a compact horizontal row in the metro panel. Full preset name visible
+  on hover (desktop) or long-press (mobile).
+- Preset UI degrades gracefully if `localStorage` is unavailable (private browsing on iOS):
+  show empty slots, disable Save button, allow in-memory recall of presets loaded via
+  workspace import.
 
-Resolves open question: *"Persist session settings (BPM, tuning reference, etc.) across page loads?"* (partially — BPM/metronome settings covered here; global session persistence is separate).
+Resolves open question: *"Persist session settings across page loads?"* (metronome config covered here; global session persistence separate).
 
 ---
 
