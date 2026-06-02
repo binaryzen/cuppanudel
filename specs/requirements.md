@@ -23,7 +23,9 @@ Holds canonical timing state. Mutated directly by UI controllers; read by metron
 | `beatsPerMeasure` | `int` | Number of beats per measure (1–13) |
 | `beatOffsets` | `float[]` | Normalized 0–1 position of each beat within the measure |
 | `beatVolumes` | `float[]` | Per-beat gain 0–1 (0 = silent, skipped entirely) |
+| `beatAccents` | `bool[]` | Per-beat accent flag; true = hi tick (index 1), false = lo tick (index 0) |
 | `visualDelayMs` | `float` | Visual playhead advance in ms to compensate display latency (0–100) |
+| `clickProviderRef` | `string` | ID of the active `SampleProvider`; default `"built-in:default"` |
 
 `setBeatsPerMeasure(tc, n)` resets both `beatOffsets` (even spacing) and `beatVolumes` (all 1.0).
 
@@ -33,7 +35,13 @@ Holds canonical timing state. Mutated directly by UI controllers; read by metron
 Lookahead scheduler using `AudioContext.currentTime`. Reads `beatOffsets` and `beatVolumes` per beat so live edits take effect on the next scheduled beat.
 
 - **Lookahead:** 25ms; scheduler polls every 25ms via `setInterval`
-- **Click sound:** noise burst (8ms, `AudioBuffer` of white noise) + sine tone body (70ms); downbeat uses 1200 Hz / 0.5 gain, other beats use 900 Hz / 0.3 gain; both scaled by `beatVolumes[i]`; beat skipped entirely if volume < 0.01
+- **Click sound:** resolved via `SampleProvider` (see `specs/workspace.md §4`). The
+  metronome holds a reference to the active provider (determined by `tc.clickProviderRef`)
+  and calls `provider.getSample(isAccent ? 1 : 0)` each scheduled event to get a
+  pre-decoded `AudioBuffer`. The built-in default provider (`"built-in:default"`)
+  synthesises the existing noise burst + sine tone on init and caches both buffers.
+  Direct synthesis inside the scheduler is removed in favour of this interface.
+- **Beat skipped:** volume < 0.01 or `getSample()` returns null → no node created
 - **Playhead position:** `getPlayheadPosition()` returns normalized 0–1 position in current measure, computed from `AudioContext.currentTime + visualDelayMs/1000 - playbackStartTime`, modulo measure duration
 
 ---
