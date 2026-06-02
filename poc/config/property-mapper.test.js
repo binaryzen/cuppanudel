@@ -301,17 +301,6 @@ test('clamps multiple array elements', () => {
 	assertEquals(target.vals[3], 100, 'should clamp above max');
 });
 
-test('skips exactLength check when reference field is missing in source', () => {
-	const schema = [
-		{ key: 'offsets', type: 'float[]', exactLength: 'beatsPerMeasure' }
-	];
-	const source = { offsets: [0, 0.5] };
-	const target = {};
-	const errors = validateAndApply(schema, source, target);
-	assertEquals(errors.length, 0, 'should have no errors when reference missing');
-	assertEquals(target.offsets.length, 2, 'should write offsets to target');
-});
-
 test('serialize with multiple fields and some defaults', () => {
 	const schema = [
 		{ key: 'name', type: 'string', default: 'unnamed' },

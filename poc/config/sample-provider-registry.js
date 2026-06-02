@@ -4,7 +4,12 @@
 // Providers register themselves at import time.
 // Exposes a test-only reset method for teardown.
 
+import { builtinClickProvider } from '../audio/builtin-click-provider.js';
+
 const registry = {};
+
+// Register built-in provider at module load time
+register(builtinClickProvider);
 
 function register(provider) {
     if (!provider || typeof provider.id !== 'string') {

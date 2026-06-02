@@ -3,6 +3,14 @@
 import { test, run, assert, assertEquals, assertNull, _reset as resetTests } from '../test/runner.js';
 import { register, get, list, _reset } from './sample-provider-registry.js';
 
+test('registry has built-in:default provider registered at module load', () => {
+    // Note: _reset() is not called here to test initial state
+    const provider = get('built-in:default');
+    assert(provider !== undefined, 'built-in:default should be registered at module load');
+    assertEquals(provider.id, 'built-in:default');
+    assertEquals(provider.label, 'Default (synthesised)');
+});
+
 test('registry.get() returns undefined for unregistered id', () => {
     _reset();
     assertEquals(get('nonexistent'), undefined);

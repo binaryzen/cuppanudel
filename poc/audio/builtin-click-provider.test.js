@@ -3,7 +3,7 @@
 import { test, run, assert, assertEquals, assertNull, _reset as resetTests } from '../test/runner.js';
 import { builtinClickProvider } from './builtin-click-provider.js';
 
-// Mock AudioContext for testing
+// Mock AudioContext and OfflineAudioContext for testing
 function createMockAudioContext() {
     const buffers = [];
     return {
@@ -37,6 +37,75 @@ function createMockAudioContext() {
         },
         destination: {}
     };
+}
+
+function createMockOfflineAudioContext(channels, length, sampleRate) {
+    // Create a mock that captures started sources and returns a rendered buffer
+    const sources = [];
+    const nodes = [];
+
+    const mockCtx = {
+        sampleRate,
+        currentTime: 0,
+        destination: {},
+        createOscillator() {
+            const osc = {
+                type: 'sine',
+                frequency: { value: 0, setValueAtTime: () => {} },
+                connect(dest) { return dest; },
+                start(t) { sources.push({ type: 'osc', time: t }); },
+                stop(t) { sources.push({ type: 'osc-stop', time: t }); }
+            };
+            return osc;
+        },
+        createBufferSource() {
+            const src = {
+                buffer: null,
+                connect(dest) { return dest; },
+                start(t) { sources.push({ type: 'buf-src', time: t }); },
+                stop(t) { sources.push({ type: 'buf-src-stop', time: t }); }
+            };
+            return src;
+        },
+        createBuffer(ch, len, rate) {
+            return {
+                sampleRate: rate,
+                length: len,
+                numberOfChannels: ch,
+                getChannelData: (i) => new Float32Array(len)
+            };
+        },
+        createGain() {
+            const gain = {
+                gain: {
+                    value: 1,
+                    setValueAtTime: () => {},
+                    linearRampToValueAtTime: () => {},
+                    exponentialRampToValueAtTime: () => {}
+                },
+                connect(dest) { return dest; },
+                disconnect() {}
+            };
+            nodes.push(gain);
+            return gain;
+        },
+        async startRendering() {
+            // Return a mock rendered buffer
+            return {
+                sampleRate,
+                length,
+                numberOfChannels: channels,
+                getChannelData: (i) => new Float32Array(length)
+            };
+        }
+    };
+
+    return mockCtx;
+}
+
+// Add global OfflineAudioContext if not available
+if (typeof OfflineAudioContext === 'undefined') {
+    global.OfflineAudioContext = createMockOfflineAudioContext;
 }
 
 test('builtinClickProvider.id is "built-in:default"', () => {

@@ -6,6 +6,8 @@ export function createTempoContext() {
         beatVolumes:     [0.5, 0.5, 0.5, 0.5],  // per-beat gain 0–1
         beatAccents:     [true, false, false, false],  // true = hi tick
         visualDelayMs:   0,
+        clickProviderRef: 'built-in:default',   // SampleProvider id
+        snapThreshold:   0,                     // float, 0.0–0.025; 0 = off
     };
 }
 

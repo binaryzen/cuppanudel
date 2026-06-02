@@ -1,20 +1,19 @@
-import { run, assert } from '../test/runner.js';
+import { test, run, assert } from '../test/runner.js';
 import { contentService } from './content-service.js';
 
-run('config/content-service', (test) => {
-  // Helper to reset state between tests
-  const reset = () => {
-    contentService.providers.forEach(p => contentService.unregister(p.id));
-  };
+// Helper to reset state between tests
+const reset = () => {
+  contentService.providers.forEach(p => contentService.unregister(p.id));
+};
 
-  const mockProvider = (id, label = 'Mock') => ({
-    id,
-    label,
-    browse: () => Promise.resolve([]),
-    import: () => Promise.resolve({}),
-  });
+const mockProvider = (id, label = 'Mock') => ({
+  id,
+  label,
+  browse: () => Promise.resolve([]),
+  import: () => Promise.resolve({}),
+});
 
-  test('contentService.providers is an empty array at module import time', () => {
+test('contentService.providers is an empty array at module import time', () => {
     reset();
     assert(Array.isArray(contentService.providers), 'providers should be an array');
     assert(contentService.providers.length === 0, 'providers should be empty at start');
@@ -98,14 +97,15 @@ run('config/content-service', (test) => {
     assert(error.message.includes('must have an id'), 'message should mention missing id');
   });
 
-  test('register with non-object throws TypeError', () => {
-    reset();
-    let error = null;
-    try {
-      contentService.register(null);
-    } catch (e) {
-      error = e;
-    }
-    assert(error instanceof TypeError, 'should throw TypeError for null');
-  });
+test('register with non-object throws TypeError', () => {
+  reset();
+  let error = null;
+  try {
+    contentService.register(null);
+  } catch (e) {
+    error = e;
+  }
+  assert(error instanceof TypeError, 'should throw TypeError for null');
 });
+
+run();
