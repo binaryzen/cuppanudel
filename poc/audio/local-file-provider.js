@@ -52,7 +52,13 @@ const localFileProvider = {
     }
 
     // Fallback: programmatic <input type="file"> click
-    return _browseViaInputFallback();
+    // Only available in browser environments
+    if (typeof document !== 'undefined') {
+      return _browseViaInputFallback();
+    }
+
+    // Non-browser environment: return empty array
+    return [];
   },
 
   /**
