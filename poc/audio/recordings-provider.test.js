@@ -9,42 +9,42 @@ const mockBuffer = (length = 44100) => ({
     duration: length / 44100,
   });
 
-  // Mock MediaPool
-  const mockPool = () => {
-    const buffers = new Map();
-    const clips = [];
+// Mock MediaPool
+const mockPool = () => {
+  const buffers = new Map();
+  const clips = [];
 
-    return {
-      get clips() {
-        return clips;
-      },
-      addBuffer(buffer, label) {
-        const id = String(clips.length + 1);
-        buffers.set(id, buffer);
-        const clip = {
-          id,
-          label: label || `Sample ${id}`,
-          bufferId: id,
-          startFrame: 0,
-          endFrame: buffer.length,
-        };
-        clips.push(clip);
-        return clip;
-      },
-      getBuffer(bufferId) {
-        return buffers.get(bufferId);
-      },
-    };
+  return {
+    get clips() {
+      return clips;
+    },
+    addBuffer(buffer, label) {
+      const id = String(clips.length + 1);
+      buffers.set(id, buffer);
+      const clip = {
+        id,
+        label: label || `Sample ${id}`,
+        bufferId: id,
+        startFrame: 0,
+        endFrame: buffer.length,
+      };
+      clips.push(clip);
+      return clip;
+    },
+    getBuffer(bufferId) {
+      return buffers.get(bufferId);
+    },
   };
+};
 
-  test('creates a provider with correct id and label', () => {
-    const pool = mockPool();
-    const provider = createRecordingsProvider(pool);
-    assert(provider.id === 'recordings', 'id should be "recordings"');
-    assert(provider.label === 'Recordings', 'label should be "Recordings"');
-  });
+test('creates a provider with correct id and label', () => {
+  const pool = mockPool();
+  const provider = createRecordingsProvider(pool);
+  assert(provider.id === 'recordings', 'id should be "recordings"');
+  assert(provider.label === 'Recordings', 'label should be "Recordings"');
+});
 
-  test('browse() on an empty pool returns []', async () => {
+test('browse() on an empty pool returns []', async () => {
     const pool = mockPool();
     const provider = createRecordingsProvider(pool);
     const items = await provider.browse();
