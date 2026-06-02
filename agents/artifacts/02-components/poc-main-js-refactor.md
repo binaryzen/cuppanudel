@@ -87,7 +87,6 @@ failure_criteria:
   - "Registering the same ContentProvider twice must be caught (registry throws) — main.js must not call register() inside the RAF loop or in a code path that executes more than once"
 dependencies:
   requires:
-    - "test-runner"
     - "config/property-mapper"
     - "config/sample-provider-registry"
     - "audio/builtin-click-provider"

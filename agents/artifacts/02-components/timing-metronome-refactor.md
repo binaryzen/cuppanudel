@@ -16,6 +16,7 @@ scope:
     - "On null return from getSample() for the built-in provider, log console.error indicating provider not ready"
     - "getPlayheadPosition() rewritten to derive scroll from measureStart and nextBeatTime to avoid drift on BPM change"
     - "start() accepts an optional clickProvider argument to allow hot-swap at restart time; if omitted, uses the provider passed at construction"
+    - "restart() = stop() followed by start() from beat 0, re-reading current tc values (bpm, beatsPerMeasure, beatOffsets, beatVolumes, beatAccents) at call time"
     - "Module file: poc/timing/metronome.js (in-place modification)"
   excludes:
     - "Lookahead interval value, scheduling algorithm, beat-offset logic — unchanged"
@@ -38,6 +39,7 @@ interface: |
   interface Metronome {
     start(): void
     stop(): void
+    // Equivalent to stop() + start() from beat 0, re-reading current tc values at call time.
     restart(): void
 
     // Returns normalized 0–1 position of the playhead within the current measure,
@@ -69,6 +71,8 @@ success_criteria:
   - "getPlayheadPosition() returns 0.0 immediately after start(), advances toward 1.0, and wraps back to 0.0 at the next measure boundary"
   - "getPlayheadPosition() returns the same measure-relative position after a BPM change mid-session (no drift from playbackStart offset)"
   - "stop() then start() resets the position to 0.0 and uses the same clickProvider"
+  - "restart() called while running: metronome stops, beat counter resets to 0, scheduling resumes from AudioContext.currentTime using current tc.bpm"
+  - "restart() called while stopped: behaves identically to start() from beat 0"
   - "isRunning() returns false before start(), true after start(), false after stop()"
 failure_criteria:
   - "If clickProvider is not provided or is undefined, createMetronome throws TypeError('createMetronome: clickProvider is required')"
@@ -76,6 +80,8 @@ failure_criteria:
   - "playClick() must not exist in the exported or internal scope after refactor — its presence constitutes a failure"
 dependencies:
   requires:
+    # ordering constraint only — builtin-click-provider must be init()'d before start() is called;
+    # it is NOT statically imported by metronome.js (the provider is injected as a parameter)
     - "audio/builtin-click-provider"
   must_not_require:
     - "config/sample-provider-registry"

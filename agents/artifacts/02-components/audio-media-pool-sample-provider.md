@@ -73,7 +73,6 @@ failure_criteria:
 dependencies:
   requires:
     - "pool/media-pool"
-    - "config/sample-provider-registry"
   must_not_require:
     - "config/property-mapper"
     - "config/workspace"
