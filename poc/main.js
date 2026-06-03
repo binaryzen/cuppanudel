@@ -57,7 +57,6 @@ const importFileBtn    = document.getElementById('import-file-btn');
 const importFileInput  = document.getElementById('import-file-input');
 const importDropOverlay = document.getElementById('import-drop-overlay');
 const presetBankContainer = document.getElementById('preset-bank-container');
-const presetSaveBtn   = document.getElementById('preset-save-btn');
 const exportWorkspaceBtn = document.getElementById('export-workspace-btn');
 const copyWorkspaceBtn = document.getElementById('copy-workspace-btn');
 const alignmentMonitorCanvas = document.getElementById('alignment-monitor');
@@ -98,8 +97,7 @@ const delayKnob = createKnob(delayKnobCanvas, 0, 100, 0, v => {
     delayVal.textContent = v + 'ms';
 });
 
-tc.snapThreshold = 0;
-const snapKnob = createKnob(snapKnobCanvas, 0, 5, 0, v => {
+const snapKnob = createKnob(snapKnobCanvas, 0, 5, 3, v => {
     tc.snapThreshold = v * 0.005;   // 0–0.025 in offset space (~0–40% of a 16th note)
     snapVal.textContent = v;
 });
@@ -457,14 +455,8 @@ function initMetroPanel() {
         }
     );
 
-    // Preset bank
+    // Preset bank — M+/MR/M− flow, M0–M7 labeled slots with LED indicators
     createPresetBank(presetBankContainer, presetStore, tc, metronome);
-
-    // Wire the preset save button
-    presetSaveBtn.addEventListener('click', () => {
-        // Trigger save mode in preset bank (this is handled internally by preset-bank)
-        // For now, we'll just toggle save mode
-    });
 }
 
 /**
@@ -592,31 +584,81 @@ function initGlobalWorkspace(ctx) {
         editConfigModal = createEditConfigModal();
     }
 
-    // Attach context menus to all panel headers (including metro-header which was added earlier)
-    const metroHeader = document.getElementById('metro-header');
-    if (metroHeader && !metroHeader.dataset.menuAttached) {
-        metroHeader.dataset.menuAttached = 'true';
-        const metroComponent = {
-            exportConfig: () => ({ bpm: tc.bpm, beatsPerMeasure: tc.beatsPerMeasure }),
-            importConfig: (cfg) => []
-        };
-        createContextMenu(metroHeader, metroComponent, (comp) => {
+    // ── Metro panel: full TC component ───────────────────────────────────────
+    const metroComponent = {
+        exportConfig: () => ({
+            bpm:             tc.bpm,
+            beatsPerMeasure: tc.beatsPerMeasure,
+            beatOffsets:     tc.beatOffsets.slice(),
+            beatVolumes:     tc.beatVolumes.slice(),
+            beatAccents:     tc.beatAccents.slice(),
+            clickProviderRef: tc.clickProviderRef,
+            snapThreshold:   tc.snapThreshold,
+            visualDelayMs:   tc.visualDelayMs,
+        }),
+        importConfig: (cfg) => {
+            const errors = [];
+            if (cfg.bpm !== undefined) {
+                const v = Number(cfg.bpm);
+                if (!isFinite(v) || v < 20 || v > 500) errors.push('bpm: must be 20–500');
+                else { tc.bpm = v; bpmKnob.setValue(v); }
+            }
+            if (cfg.beatsPerMeasure !== undefined) {
+                const v = Number(cfg.beatsPerMeasure);
+                if (!Number.isInteger(v) || v < 1 || v > 18) errors.push('beatsPerMeasure: must be integer 1–18');
+                else { setBeatsPerMeasure(tc, v); beatsKnob.setValue(v); }
+            }
+            if (cfg.visualDelayMs !== undefined) {
+                const v = Number(cfg.visualDelayMs);
+                if (!isFinite(v) || v < 0 || v > 100) errors.push('visualDelayMs: must be 0–100');
+                else { tc.visualDelayMs = v; delayKnob.setValue(v); }
+            }
+            if (cfg.snapThreshold !== undefined) {
+                const v = Number(cfg.snapThreshold);
+                if (!isFinite(v) || v < 0 || v > 0.025) errors.push('snapThreshold: must be 0–0.025');
+                else { tc.snapThreshold = v; snapKnob.setValue(Math.round(v / 0.005)); }
+            }
+            if (cfg.beatOffsets !== undefined) {
+                if (!Array.isArray(cfg.beatOffsets)) errors.push('beatOffsets: must be array');
+                else tc.beatOffsets = cfg.beatOffsets.slice();
+            }
+            if (cfg.beatVolumes !== undefined) {
+                if (!Array.isArray(cfg.beatVolumes)) errors.push('beatVolumes: must be array');
+                else tc.beatVolumes = cfg.beatVolumes.slice();
+            }
+            if (cfg.beatAccents !== undefined) {
+                if (!Array.isArray(cfg.beatAccents)) errors.push('beatAccents: must be array');
+                else tc.beatAccents = cfg.beatAccents.slice();
+            }
+            if (cfg.clickProviderRef !== undefined) tc.clickProviderRef = String(cfg.clickProviderRef);
+            if (errors.length === 0 && metronome?.isRunning?.()) metronome.restart();
+            return errors;
+        },
+    };
+
+    // Helper: attach a context menu to a panel and wire its [...] button
+    function attachPanelMenu(settingsBtnId, component) {
+        const btn = document.getElementById(settingsBtnId);
+        if (!btn) return;
+        const menu = createContextMenu(btn.closest('.panel-header, section') || btn, component, (comp) => {
             editConfigModal.open(comp);
+        });
+        btn.addEventListener('click', () => {
+            const r = btn.getBoundingClientRect();
+            menu.showAt(r.left, r.bottom + 4);
         });
     }
 
-    // Attach context menus to any other panel headers
-    const otherHeaders = document.querySelectorAll('.panel-header:not([data-menu-attached])');
-    otherHeaders.forEach(header => {
-        header.dataset.menuAttached = 'true';
-        const component = {
-            exportConfig: () => ({ dummy: true }),
-            importConfig: () => []
-        };
-        createContextMenu(header, component, (comp) => {
-            editConfigModal.open(comp);
-        });
+    attachPanelMenu('metro-settings-btn', metroComponent);
+
+    // Stub components for visualizer panels that don't yet expose editable config
+    const stubComponent = (label) => ({
+        exportConfig: () => ({ panel: label }),
+        importConfig: () => [],
     });
+    attachPanelMenu('peak-settings-btn',     stubComponent('Level Meter'));
+    attachPanelMenu('tuner-settings-btn',    stubComponent('Tuner'));
+    attachPanelMenu('waveform-settings-btn', stubComponent('Waveform'));
 
     // Wire export button using workspace.js downloadWorkspace (handles blob/link internally)
     if (exportWorkspaceBtn) {
