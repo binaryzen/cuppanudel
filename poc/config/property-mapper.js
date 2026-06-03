@@ -53,9 +53,12 @@ function clampScalar(value, type, min, max) {
 
 function validateAndApply(schema, source, target) {
 	const errors = [];
+	const warnings = [];
 	const pending = [];
 
 	// Pass 1: validate and collect
+	// Clamped-value messages go into warnings; type mismatches, length errors,
+	// and required-missing go into errors.
 	for (const descriptor of schema) {
 		const { key, type, required, min, max, minLength, maxLength, exactLength, default: _ } = descriptor;
 		const sourceValue = source[key];
@@ -83,11 +86,11 @@ function validateAndApply(schema, source, target) {
 			let clampedValue = sourceValue;
 			if (min !== undefined && sourceValue < min) {
 				clampedValue = min;
-				errors.push(`${key}: ${sourceValue} out of range ${min}–${max ?? 'unlimited'}, clamped to ${clampedValue}`);
+				warnings.push(`${key}: ${sourceValue} out of range ${min}–${max ?? 'unlimited'}, clamped to ${clampedValue}`);
 			}
 			if (max !== undefined && sourceValue > max) {
 				clampedValue = max;
-				errors.push(`${key}: ${sourceValue} out of range ${min ?? 'unlimited'}–${max}, clamped to ${clampedValue}`);
+				warnings.push(`${key}: ${sourceValue} out of range ${min ?? 'unlimited'}–${max}, clamped to ${clampedValue}`);
 			}
 			pending.push({ key, value: clampedValue });
 		} else if (type === 'bool' || type === 'string') {
@@ -106,10 +109,10 @@ function validateAndApply(schema, source, target) {
 				if ((type === 'float[]' || type === 'int[]') && (min !== undefined || max !== undefined)) {
 					if (min !== undefined && element < min) {
 						clampedElement = min;
-						errors.push(`${key}[${i}]: ${element} out of range ${min}–${max ?? 'unlimited'}, clamped to ${clampedElement}`);
+						warnings.push(`${key}[${i}]: ${element} out of range ${min}–${max ?? 'unlimited'}, clamped to ${clampedElement}`);
 					} else if (max !== undefined && element > max) {
 						clampedElement = max;
-						errors.push(`${key}[${i}]: ${element} out of range ${min ?? 'unlimited'}–${max}, clamped to ${clampedElement}`);
+						warnings.push(`${key}[${i}]: ${element} out of range ${min ?? 'unlimited'}–${max}, clamped to ${clampedElement}`);
 					}
 				}
 				processedArray.push(clampedElement);
@@ -146,15 +149,16 @@ function validateAndApply(schema, source, target) {
 		}
 	}
 
-	// Pass 2: write atomically only if no errors
-	if (errors.length === 0 || errors.every(e => e.includes('clamped'))) {
-		// No hard errors (warnings only)
+	// Pass 2: write atomically only if there are no hard errors.
+	// Warnings (clamped values) do not block the write.
+	if (errors.length === 0) {
 		for (const { key, value } of pending) {
 			target[key] = value;
 		}
+		return [...warnings];
 	}
 
-	return errors;
+	return [...errors, ...warnings];
 }
 
 function serialize(schema, source) {

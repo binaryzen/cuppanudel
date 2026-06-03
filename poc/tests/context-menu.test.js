@@ -14,31 +14,42 @@ import { createContextMenu } from '../ui/context-menu.js';
 // Mock document
 if (typeof globalThis.document === 'undefined') {
   globalThis.document = {
-    createElement: (tag) => ({
-      style: { cssText: '' },
-      textContent: '',
-      onclick: null,
-      onmouseenter: null,
-      onmouseleave: null,
-      appendChild: () => {},
-      remove: () => {},
-      contains: () => false,
-      getBoundingClientRect: () => ({ right: 100, bottom: 100, width: 50, height: 50 }),
-      _listeners: {},
-      addEventListener: function(evt, handler) {
-        if (!this._listeners[evt]) this._listeners[evt] = [];
-        this._listeners[evt].push(handler);
-      },
-      removeEventListener: function(evt, handler) {
-        if (this._listeners[evt]) {
-          this._listeners[evt] = this._listeners[evt].filter(h => h !== handler);
-        }
-      },
-    }),
+    createElement: (tag) => {
+      const el = {
+        style: { cssText: '' },
+        textContent: '',
+        onclick: null,
+        onmouseenter: null,
+        onmouseleave: null,
+        _children: [],
+        appendChild: function(child) {
+          if (!this._children) this._children = [];
+          this._children.push(child);
+        },
+        remove: () => {},
+        contains: (target) => false,
+        getBoundingClientRect: () => ({ right: 100, bottom: 100, width: 50, height: 50 }),
+        _listeners: {},
+        addEventListener: function(evt, handler) {
+          if (!this._listeners[evt]) this._listeners[evt] = [];
+          this._listeners[evt].push(handler);
+        },
+        removeEventListener: function(evt, handler) {
+          if (this._listeners[evt]) {
+            this._listeners[evt] = this._listeners[evt].filter(h => h !== handler);
+          }
+        },
+      };
+      return el;
+    },
     body: {
-      appendChild: () => {},
-      removeChild: () => {},
       _children: [],
+      appendChild: function(child) {
+        this._children.push(child);
+      },
+      removeChild: function(child) {
+        this._children = this._children.filter(c => c !== child);
+      },
       _listeners: {},
       addEventListener: function(evt, handler) {
         if (!this._listeners[evt]) this._listeners[evt] = [];
@@ -74,8 +85,8 @@ if (typeof globalThis.window === 'undefined') {
 
 // tc-023: Context menu shows 'Paste Config' hidden (not greyed) when clipboard unavailable
 test('tc-023: Paste Config item is hidden when clipboard unavailable', async () => {
-  // Mock navigator with clipboard that rejects
   const target = globalThis.document.createElement('div');
+  target._listeners = {};
 
   const component = {
     exportConfig: () => ({}),
@@ -92,10 +103,36 @@ test('tc-023: Paste Config item is hidden when clipboard unavailable', async () 
   try {
     const menu = createContextMenu(target, component, openModal);
 
-    // The menu should be created without errors
-    // Since clipboard is undefined, Paste Config item should not be rendered
-    // We can't easily test this without a full DOM, so we just verify it doesn't throw
     if (!menu) throw new Error('Failed to create context menu');
+
+    // Simulate opening the menu by calling the contextmenu handler
+    if (target._listeners && target._listeners.contextmenu) {
+      const contextMenuEvent = {
+        preventDefault: () => {},
+        clientX: 100,
+        clientY: 100
+      };
+      target._listeners.contextmenu[0](contextMenuEvent);
+    }
+
+    // Find the rendered menu in document.body
+    let pasteItemFound = false;
+    if (globalThis.document.body._children) {
+      for (const child of globalThis.document.body._children) {
+        if (child._children) {
+          for (const menuItem of child._children) {
+            if (menuItem.textContent && menuItem.textContent.includes('Paste Config')) {
+              pasteItemFound = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (pasteItemFound) {
+      throw new Error('Paste Config item should not be present when clipboard is unavailable');
+    }
 
     menu.dispose();
   } finally {
@@ -108,6 +145,7 @@ test('tc-023: Paste Config item is hidden when clipboard unavailable', async () 
 // tc-024: Context menu calls importConfig when 'Paste Config' is clicked
 test('tc-024: Paste Config calls importConfig with clipboard content', async () => {
   const target = globalThis.document.createElement('div');
+  target._listeners = {};
 
   let importConfigCalled = false;
   const component = {
@@ -137,6 +175,45 @@ test('tc-024: Paste Config calls importConfig with clipboard content', async () 
   const menu = createContextMenu(target, component, openModal);
 
   if (!menu) throw new Error('Failed to create context menu');
+
+  // Simulate opening the context menu by calling the handler
+  if (target._listeners && target._listeners.contextmenu) {
+    const contextMenuEvent = {
+      preventDefault: () => {},
+      clientX: 100,
+      clientY: 100
+    };
+    target._listeners.contextmenu[0](contextMenuEvent);
+  }
+
+  // Find the rendered menu and locate the Paste Config item
+  let pasteItem = null;
+  if (globalThis.document.body._children) {
+    const menuEl = globalThis.document.body._children[globalThis.document.body._children.length - 1];
+    if (menuEl && menuEl._children) {
+      pasteItem = menuEl._children.find(child =>
+        child.textContent && child.textContent.includes('Paste Config')
+      );
+    }
+  }
+
+  if (!pasteItem) {
+    throw new Error('Paste Config item not found in menu');
+  }
+
+  if (pasteItem.onclick) {
+    // Simulate clicking the Paste Config item
+    await pasteItem.onclick();
+  } else {
+    throw new Error('Paste Config item has no onclick handler');
+  }
+
+  // Give async paste operation time to complete
+  await new Promise(resolve => setTimeout(resolve, 50));
+
+  if (!importConfigCalled) {
+    throw new Error('Expected importConfig to be called after Paste Config click');
+  }
 
   menu.dispose();
 });

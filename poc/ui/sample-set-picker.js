@@ -113,6 +113,10 @@ function createSampleSetPicker(target, registry, pool, tc, onProviderChange) {
 
     document.removeEventListener('keydown', handleDropdownEscape);
     document.removeEventListener('click', handleOutsideClick);
+    if (slotAssignmentEscapeRegistered) {
+      document.removeEventListener('keydown', handleSlotAssignmentEscape);
+      slotAssignmentEscapeRegistered = false;
+    }
   }
 
   // Handle Escape key in dropdown
@@ -179,8 +183,11 @@ function createSampleSetPicker(target, registry, pool, tc, onProviderChange) {
     confirmBtn.addEventListener('click', confirmNewSampleSet);
     slotAssignmentEl.appendChild(confirmBtn);
 
-    // Handle Escape to cancel
-    document.addEventListener('keydown', handleSlotAssignmentEscape);
+    // Handle Escape to cancel slot assignment
+    if (!slotAssignmentEscapeRegistered) {
+      document.addEventListener('keydown', handleSlotAssignmentEscape);
+      slotAssignmentEscapeRegistered = true;
+    }
   }
 
   // Render a single slot assignment row
@@ -254,12 +261,14 @@ function createSampleSetPicker(target, registry, pool, tc, onProviderChange) {
     slotAssignmentState.slots[slotIndex].clipId = clipId;
   }
 
-  // Handle Escape during slot assignment
+  // Handle Escape during slot assignment.
+  // Stored in a variable so closeDropdown() and dispose() can remove it.
   function handleSlotAssignmentEscape(event) {
     if (event.key === 'Escape') {
       closeDropdown();
     }
   }
+  let slotAssignmentEscapeRegistered = false;
 
   // Confirm and create the new sample set provider
   function confirmNewSampleSet() {
@@ -305,6 +314,10 @@ function createSampleSetPicker(target, registry, pool, tc, onProviderChange) {
     dispose() {
       document.removeEventListener('keydown', handleDropdownEscape);
       document.removeEventListener('click', handleOutsideClick);
+      if (slotAssignmentEscapeRegistered) {
+        document.removeEventListener('keydown', handleSlotAssignmentEscape);
+        slotAssignmentEscapeRegistered = false;
+      }
     },
   };
 

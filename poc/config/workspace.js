@@ -155,7 +155,19 @@ function showErrorPanel(errors) {
 // Assembles and serialises the full workspace to a YAML string.
 // Always writes all sections explicitly (including empty sampleSets: [] and presets: []).
 // Adds version: 1 at the top level.
-function exportWorkspace(components, jsyaml) {
+// WorkspaceComponents shape: { global, metronome, sampleSets, presets }
+// each with exportConfig() and importConfig(slice) methods.
+// jsyaml defaults to window.jsyaml (loaded as a plain <script> before the module).
+// Tests may inject a stub as the second argument for isolation.
+function exportWorkspace(components, jsyaml = window?.jsyaml) {
+	if (typeof jsyaml?.dump !== 'function') {
+		console.error('exportWorkspace: jsyaml not available — ensure js-yaml is loaded before this module');
+		return null;
+	}
+	if (!components.global || typeof components.global.exportConfig !== 'function') {
+		console.error('exportWorkspace: components.global.exportConfig is not a function — check WorkspaceComponents shape');
+		return null;
+	}
 	const workspaceObj = {
 		version: 1,
 	};
@@ -178,7 +190,7 @@ function exportWorkspace(components, jsyaml) {
 }
 
 // Triggers a browser file download of the workspace as 'workspace.yaml'.
-function downloadWorkspace(components, jsyaml) {
+function downloadWorkspace(components, jsyaml = window?.jsyaml) {
 	const yaml = exportWorkspace(components, jsyaml);
 	const blob = new Blob([yaml], { type: 'text/plain;charset=utf-8' });
 	const url = URL.createObjectURL(blob);
@@ -193,14 +205,14 @@ function downloadWorkspace(components, jsyaml) {
 
 // Writes the workspace YAML string to the clipboard via navigator.clipboard.writeText.
 // Returns a Promise that rejects if clipboard write fails.
-function copyWorkspace(components, jsyaml) {
+function copyWorkspace(components, jsyaml = window?.jsyaml) {
 	const yaml = exportWorkspace(components, jsyaml);
 	return navigator.clipboard.writeText(yaml);
 }
 
 // Parses and applies a workspace from text.
 // Returns true if workspace was applied, false if cancelled, rejects on hard error.
-async function importWorkspace(text, filename, fileSize, components, jsyaml) {
+async function importWorkspace(text, filename, fileSize, components, jsyaml = window?.jsyaml) {
 	// Size check
 	if (fileSize > 1_048_576) {
 		showErrorToast('File too large for a workspace config');
@@ -233,8 +245,9 @@ async function importWorkspace(text, filename, fileSize, components, jsyaml) {
 		}
 	}
 
-	// Validate each section via validateAndApply
-	const validationErrors = [];
+	// Collect sections present in the parsed workspace.
+	// importConfig is called ONLY once per section during Apply — not during
+	// the pre-check phase — to avoid double-applying side effects.
 	const sectionsToApply = [];
 
 	// Import order: sampleSets -> global -> metronome -> presets
@@ -245,6 +258,7 @@ async function importWorkspace(text, filename, fileSize, components, jsyaml) {
 		{ key: 'presets', component: components.presets },
 	];
 
+	const structuralErrors = [];
 	for (const { key, component } of importOrder) {
 		if (!component || !(key in parsed)) {
 			continue; // Skip missing sections
@@ -252,30 +266,28 @@ async function importWorkspace(text, filename, fileSize, components, jsyaml) {
 
 		const slice = parsed[key];
 		if (typeof slice !== 'object' || slice === null) {
-			validationErrors.push(`${key}: must be an object`);
+			structuralErrors.push(`${key}: must be an object`);
 			continue;
 		}
 
-		// Delegate to component.importConfig for validation
-		const errors = component.importConfig(slice);
-		if (errors.length > 0) {
-			validationErrors.push(...errors);
-		} else {
-			sectionsToApply.push({ key, component, slice });
-		}
+		sectionsToApply.push({ key, component, slice });
 	}
 
-	// If any errors, show them and stop
-	if (validationErrors.length > 0) {
-		showErrorPanel(validationErrors);
+	if (structuralErrors.length > 0) {
+		showErrorPanel(structuralErrors);
 		return false;
 	}
 
 	// Deep equality check: see if anything differs from current state
 	let anyDifference = false;
 	for (const { key, component, slice } of sectionsToApply) {
-		const current = component.exportConfig();
-		if (!deepEqual(current, slice)) {
+		if (typeof component.exportConfig === 'function') {
+			const current = component.exportConfig();
+			if (!deepEqual(current, slice)) {
+				anyDifference = true;
+				break;
+			}
+		} else {
 			anyDifference = true;
 			break;
 		}
@@ -289,10 +301,19 @@ async function importWorkspace(text, filename, fileSize, components, jsyaml) {
 		}
 	}
 
-	// Apply each section by re-calling importConfig in order
-	// (importConfig does the actual write; we've already validated)
+	// Apply each section by calling importConfig exactly once (write phase).
+	// Collect any validation errors that importConfig reports during write.
+	const applyErrors = [];
 	for (const { key, component, slice } of sectionsToApply) {
-		component.importConfig(slice);
+		const errors = component.importConfig(slice);
+		if (errors && errors.length > 0) {
+			applyErrors.push(...errors);
+		}
+	}
+
+	if (applyErrors.length > 0) {
+		showErrorPanel(applyErrors);
+		return false;
 	}
 
 	return true;
@@ -300,7 +321,7 @@ async function importWorkspace(text, filename, fileSize, components, jsyaml) {
 
 // Registers document-level dragover + drop listeners for workspace files.
 // Returns an unregister function.
-function registerDropTarget(components, jsyaml) {
+function registerDropTarget(components, jsyaml = window?.jsyaml) {
 	const handleDragOver = (e) => {
 		if (e.dataTransfer.types.includes('Files')) {
 			e.preventDefault();

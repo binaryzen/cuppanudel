@@ -18,7 +18,7 @@ import { builtinClickProvider } from './audio/builtin-click-provider.js';
 import { contentService } from './config/content-service.js';
 import { localFileProvider } from './audio/local-file-provider.js';
 import { createRecordingsProvider } from './audio/recordings-provider.js';
-import { exportWorkspace, importWorkspace } from './config/workspace.js';
+import { exportWorkspace, downloadWorkspace, copyWorkspace, importWorkspace, registerDropTarget } from './config/workspace.js';
 import { createContextMenu } from './ui/context-menu.js';
 import { createEditConfigModal } from './ui/edit-config-modal.js';
 import { createMediaPoolSampleProvider } from './audio/media-pool-sample-provider.js';
@@ -552,6 +552,37 @@ function initSampleBrowser() {
 }
 
 /**
+ * Builds a WorkspaceComponents object from raw app state.
+ * Each component must expose exportConfig() and importConfig(slice).
+ * workspace.js expects this shape — raw state objects (tc, pool, etc.) do not
+ * satisfy the interface and will throw TypeError if passed directly.
+ */
+function buildWorkspaceComponents() {
+    return {
+        global: {
+            exportConfig: () => ({
+                visualDelayMs: tc.visualDelayMs,
+                snapThreshold: tc.snapThreshold,
+            }),
+            importConfig: (data) => {
+                if (data.visualDelayMs !== undefined) tc.visualDelayMs = data.visualDelayMs;
+                if (data.snapThreshold !== undefined) tc.snapThreshold = data.snapThreshold;
+                return [];
+            },
+        },
+        // metronome already has exportConfig/importConfig from its implementation
+        metronome: metronome,
+        sampleSets: {
+            // Placeholder — sample set serialization TBD
+            exportConfig: () => [],
+            importConfig: () => [],
+        },
+        // presetStore already has exportConfig/importConfig
+        presets: presetStore,
+    };
+}
+
+/**
  * initGlobalWorkspace: Setup export/copy buttons, drop target, and context menus.
  * Requires context to be initialized.
  */
@@ -587,38 +618,22 @@ function initGlobalWorkspace(ctx) {
         });
     });
 
-    // Wire export button
+    // Wire export button using workspace.js downloadWorkspace (handles blob/link internally)
     if (exportWorkspaceBtn) {
         exportWorkspaceBtn.addEventListener('click', () => {
-            const components = {
-                tc, pool, metronome, presetStore
-            };
             try {
-                const yaml = exportWorkspace(components);
-                const blob = new Blob([yaml], { type: 'text/yaml' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'workspace.yaml';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                downloadWorkspace(buildWorkspaceComponents());
             } catch (err) {
                 console.error('Export failed:', err);
             }
         });
     }
 
-    // Wire copy button
+    // Wire copy button using workspace.js copyWorkspace
     if (copyWorkspaceBtn) {
         copyWorkspaceBtn.addEventListener('click', async () => {
-            const components = {
-                tc, pool, metronome, presetStore
-            };
             try {
-                const yaml = exportWorkspace(components);
-                await navigator.clipboard.writeText(yaml);
+                await copyWorkspace(buildWorkspaceComponents());
                 // Show success toast
                 const toast = document.createElement('div');
                 toast.style.cssText = `
@@ -635,47 +650,8 @@ function initGlobalWorkspace(ctx) {
         });
     }
 
-    // Register drop target on document for workspace YAML import
-    document.addEventListener('dragover', (e) => {
-        // Only if not over a panel with its own drag handler
-        const target = e.target;
-        if (!target.closest('[class*="panel"]')) {
-            e.preventDefault();
-        }
-    });
-
-    document.addEventListener('drop', async (e) => {
-        // Only process drops not handled by child elements
-        if (e.target.closest('[class*="panel"]')) {
-            return;
-        }
-        e.preventDefault();
-
-        const files = e.dataTransfer?.files || [];
-        for (const file of files) {
-            if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
-                try {
-                    const text = await file.text();
-                    const result = await importWorkspace(text, {
-                        tc, pool, metronome, presetStore
-                    });
-                    if (result.success) {
-                        // Show confirmation
-                        const toast = document.createElement('div');
-                        toast.style.cssText = `
-                            position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
-                            background: #040; color: #fff; padding: 0.75rem 1.5rem;
-                            border-radius: 4px; font-size: 0.9rem; z-index: 9999;
-                        `;
-                        toast.textContent = 'Workspace imported';
-                        document.body.appendChild(toast);
-                        setTimeout(() => toast.remove(), 2000);
-                    }
-                } catch (err) {
-                    console.error('Workspace import failed:', err);
-                }
-            }
-        }
-    });
+    // Register drop target using workspace.js registerDropTarget.
+    // This handles dragover/drop with proper size checks, YAML parsing, and error toasts.
+    registerDropTarget(buildWorkspaceComponents());
 }
 

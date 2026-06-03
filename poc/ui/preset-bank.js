@@ -20,7 +20,7 @@ function createPresetBank(container, store, tc, metronome, docRef = document) {
 
 	// Create 8 slot buttons
 	for (let i = 0; i < MAX_PRESETS; i++) {
-		const button = docRef.createElement ? docRef.createElement('button') : new MockButton();
+		const button = docRef.createElement('button');
 		button.className = 'preset-slot';
 		button.dataset = button.dataset || {};
 		button.dataset.index = i;
@@ -42,11 +42,13 @@ function createPresetBank(container, store, tc, metronome, docRef = document) {
 			button.textContent = displayName.substring(0, 10); // truncate for display
 			if (button.classList) {
 				button.classList.add('preset-filled');
+				if (saveMode) {
+					button.classList.add('preset-save-mode');
+				} else {
+					button.classList.remove('preset-save-mode');
+				}
 			}
 			button.title = preset.name || `Preset ${index + 1}`;
-			if (saveMode && button.classList) {
-				button.classList.add('preset-save-mode');
-			}
 		}
 	}
 
@@ -150,42 +152,5 @@ function createPresetBank(container, store, tc, metronome, docRef = document) {
 		},
 	};
 }
-
-// Mock button for testing when DOM isn't available
-function MockButton() {
-	this.className = '';
-	this.classList = {
-		_classes: new Set(),
-		add: function(cls) { this._classes.add(cls); },
-		remove: function(cls) { this._classes.delete(cls); },
-		contains: function(cls) { return this._classes.has(cls); },
-	};
-	this.textContent = '';
-	this.title = '';
-	this.disabled = false;
-	this.dataset = {};
-	this._listeners = {};
-}
-
-MockButton.prototype.addEventListener = function(event, handler) {
-	if (!this._listeners[event]) {
-		this._listeners[event] = [];
-	}
-	this._listeners[event].push(handler);
-};
-
-MockButton.prototype.removeEventListener = function(event, handler) {
-	if (this._listeners[event]) {
-		this._listeners[event] = this._listeners[event].filter(h => h !== handler);
-	}
-};
-
-MockButton.prototype.click = function() {
-	if (this._listeners['click']) {
-		for (const handler of this._listeners['click']) {
-			handler();
-		}
-	}
-};
 
 export { createPresetBank, snapshotFrom };

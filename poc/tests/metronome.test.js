@@ -20,7 +20,10 @@ function canUseOfflineAudioContext() {
 
 // tc-013: Metronome.start() calls clickProvider.getSample() to schedule AudioBufferSourceNodes
 test('tc-013: metronome calls getSample() with correct indices', () => {
-  if (!canUseOfflineAudioContext()) return; // Skip in Node.js
+  if (!canUseOfflineAudioContext()) {
+    console.log('SKIP tc-013: OfflineAudioContext unavailable in Node.js');
+    return; // Skip in Node.js
+  }
 
   const tc = createTempoContext();
   tc.beatAccents = [true, false];
@@ -49,7 +52,10 @@ test('tc-013: metronome calls getSample() with correct indices', () => {
 
 // tc-014: Metronome respects beatVolumes threshold; volume < 0.01 silences beat
 test('tc-014: metronome respects volume threshold', () => {
-  if (!canUseOfflineAudioContext()) return; // Skip in Node.js
+  if (!canUseOfflineAudioContext()) {
+    console.log('SKIP tc-014: OfflineAudioContext unavailable in Node.js');
+    return; // Skip in Node.js
+  }
 
   const tc = createTempoContext();
   tc.beatVolumes = [1.0, 0.0, 0.005];
@@ -77,13 +83,17 @@ test('tc-014: metronome respects volume threshold', () => {
   // Beat 1 (volume 0.0) should NOT schedule
   // Beat 2 (volume 0.005) should NOT schedule
 
-  const beat0Calls = callLog.filter((_, i) => i === 0).length;
-  assert(beat0Calls > 0, 'Beat 0 with volume 1.0 should schedule');
+  // Verify exactly ONE call was made (beat 0 only)
+  assertEquals(callLog.length, 1, 'Only beat 0 (volume 1.0) should call getSample; beats 1 and 2 should not');
+  assertEquals(callLog[0].idx, 1, 'First call should be for beat 0 (accent index 1)')
 });
 
 // tc-015: Metronome logs console.error when getSample() returns null
 test('tc-015: metronome logs error on null sample', () => {
-  if (!canUseOfflineAudioContext()) return; // Skip in Node.js
+  if (!canUseOfflineAudioContext()) {
+    console.log('SKIP tc-015: OfflineAudioContext unavailable in Node.js');
+    return; // Skip in Node.js
+  }
 
   const tc = createTempoContext();
 
@@ -114,7 +124,10 @@ test('tc-015: metronome logs error on null sample', () => {
 
 // tc-016: Metronome.restart() stops, resets to beat 0, and resumes
 test('tc-016: restart() resets playhead position to 0', () => {
-  if (!canUseOfflineAudioContext()) return; // Skip in Node.js
+  if (!canUseOfflineAudioContext()) {
+    console.log('SKIP tc-016: OfflineAudioContext unavailable in Node.js');
+    return; // Skip in Node.js
+  }
 
   const tc = createTempoContext();
   tc.bpm = 120;
@@ -143,7 +156,10 @@ test('tc-016: restart() resets playhead position to 0', () => {
 
 // tc-017: Metronome.getPlayheadPosition() derives from measureStart/nextBeatTime
 test('tc-017: playhead position is invariant across BPM change', () => {
-  if (!canUseOfflineAudioContext()) return; // Skip in Node.js
+  if (!canUseOfflineAudioContext()) {
+    console.log('SKIP tc-017: OfflineAudioContext unavailable in Node.js');
+    return; // Skip in Node.js
+  }
 
   const tc = createTempoContext();
   tc.bpm = 120;
@@ -161,17 +177,19 @@ test('tc-017: playhead position is invariant across BPM change', () => {
 
   metro.start();
 
-  // Get initial position (should be near 0)
+  // Get initial position immediately (before BPM change)
   const pos0 = metro.getPlayheadPosition();
 
   // Change BPM
   tc.bpm = 240;
 
-  // Get position again at same relative time
+  // Get position again at same relative time (synchronously, so currentTime is same)
   const pos1 = metro.getPlayheadPosition();
 
+  // Since OfflineAudioContext.currentTime doesn't advance between synchronous calls,
+  // the positions should be equal (or within floating-point epsilon)
   assert(pos0 !== null && pos1 !== null, 'Both positions should be non-null');
-  // Due to timing variations, we can't guarantee exact equality, but they should be very close
+  assert(Math.abs(pos0 - pos1) < 0.01, 'Positions should be equal/close after BPM change (invariance)');
 });
 
 // tc-018: Metronome throws TypeError if clickProvider is not provided

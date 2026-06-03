@@ -76,8 +76,9 @@ function createContextMenu(target, component, openModal) {
 		};
 
 		// Paste Config item (only if clipboard available)
+		let pasteItem = null;
 		if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
-			const pasteItem = document.createElement('div');
+			pasteItem = document.createElement('div');
 			pasteItem.textContent = 'Paste Config';
 			pasteItem.style.cssText = `
 				padding: 0.5rem 1rem;
@@ -123,7 +124,6 @@ function createContextMenu(target, component, openModal) {
 					hideMenu();
 				}
 			};
-			menu.appendChild(pasteItem);
 		}
 
 		// Edit Config item
@@ -141,8 +141,16 @@ function createContextMenu(target, component, openModal) {
 			hideMenu();
 		};
 
+		// Spec order: Copy Config, Paste Config (if clipboard available), Edit Config
 		menu.appendChild(copyItem);
+		if (pasteItem) {
+			menu.appendChild(pasteItem);
+		}
 		menu.appendChild(editItem);
+
+		// Append to DOM before clamping so getBoundingClientRect() returns real dimensions.
+		document.body.appendChild(menu);
+		currentMenu = menu;
 
 		// Clamp menu to viewport (8 px margins)
 		const rect = menu.getBoundingClientRect();
@@ -173,9 +181,6 @@ function createContextMenu(target, component, openModal) {
 
 		menu.style.left = adjustedX + 'px';
 		menu.style.top = adjustedY + 'px';
-
-		document.body.appendChild(menu);
-		currentMenu = menu;
 	}
 
 	function handleContextMenu(e) {

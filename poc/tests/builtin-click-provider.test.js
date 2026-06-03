@@ -10,43 +10,10 @@ import { builtinClickProvider } from '../audio/builtin-click-provider.js';
 
 // tc-007: BuiltinClickProvider returns null before init() resolves
 test('tc-007: getSample() returns null before init()', () => {
-  // Create fresh provider instance by mocking
-  const provider = {
-    id: 'built-in:default',
-    label: 'Default (synthesised)',
-    _buffers: null,
-    _initialized: false,
-
-    count() {
-      return 2;
-    },
-
-    getSample(index) {
-      if (!this._initialized) {
-        console.error('BuiltinClickProvider not initialised');
-        return null;
-      }
-      if (index < 0 || index > 1) {
-        return null;
-      }
-      return this._buffers[index];
-    },
-
-    async init(ctx) {
-      if (this._initialized) {
-        return Promise.resolve();
-      }
-      // Simulate init by setting buffers
-      this._buffers = {
-        0: ctx.createBuffer(1, 100, ctx.sampleRate),
-        1: ctx.createBuffer(1, 100, ctx.sampleRate)
-      };
-      this._initialized = true;
-    }
-  };
-
-  const result0 = provider.getSample(0);
-  const result1 = provider.getSample(1);
+  // Test the REAL builtinClickProvider before init() is called
+  // In a fresh module import, it should return null before init()
+  const result0 = builtinClickProvider.getSample(0);
+  const result1 = builtinClickProvider.getSample(1);
 
   assertEquals(result0, null, 'getSample(0) should return null before init');
   assertEquals(result1, null, 'getSample(1) should return null before init');
@@ -61,6 +28,7 @@ test('tc-008: init() synthesizes and caches buffers', async () => {
     mockCtx = new OfflineAudioContext(1, 44100, 44100);
   } catch (e) {
     // Node.js environment: skip this test
+    console.log('SKIP tc-008: OfflineAudioContext unavailable in Node.js');
     return;
   }
 
@@ -92,6 +60,7 @@ test('tc-009: init() second call is a no-op', async () => {
     mockCtx = new OfflineAudioContext(1, 44100, 44100);
   } catch (e) {
     // Node.js environment: skip this test
+    console.log('SKIP tc-009: OfflineAudioContext unavailable in Node.js');
     return;
   }
 

@@ -44,12 +44,12 @@ const builtinClickProvider = {
             const noiseDuration = 0.008;  // 8 ms
             const sampleRate = ctx.sampleRate;
 
-            // Create offline context for synthesis
-            const offlineCtx = new OfflineAudioContext(1, sampleRate * duration, sampleRate);
+            // Each _synthesizeClick call creates its own OfflineAudioContext.
+            // A single OfflineAudioContext cannot startRendering() twice.
 
             // Synthesize beat (index 0)
             const beatBuf = await this._synthesizeClick(
-                offlineCtx,
+                sampleRate,
                 beatFreq,
                 beatGain,
                 noiseGain,
@@ -59,7 +59,7 @@ const builtinClickProvider = {
 
             // Synthesize accent (index 1)
             const accentBuf = await this._synthesizeClick(
-                offlineCtx,
+                sampleRate,
                 accentFreq,
                 accentGain,
                 accentNoiseGain,
@@ -77,7 +77,12 @@ const builtinClickProvider = {
         }
     },
 
-    async _synthesizeClick(offlineCtx, frequency, gain, noiseGain, duration, noiseDuration) {
+    async _synthesizeClick(sampleRate, frequency, gain, noiseGain, duration, noiseDuration) {
+        // Create a fresh OfflineAudioContext for each render — reusing one would
+        // throw InvalidStateError on the second startRendering() call.
+        const frameCount = Math.ceil(duration * sampleRate);
+        const offlineCtx = new OfflineAudioContext(1, frameCount, sampleRate);
+
         // Create oscillator (tone body)
         const osc = offlineCtx.createOscillator();
         const oscGain = offlineCtx.createGain();
