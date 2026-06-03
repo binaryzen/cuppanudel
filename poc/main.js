@@ -71,8 +71,8 @@ const delayKnob = createKnob(delayKnobCanvas, 0, 100, 0, v => {
     delayVal.textContent = v + 'ms';
 });
 
-tc.snapThreshold = 0;
-const snapKnob = createKnob(snapKnobCanvas, 0, 5, 0, v => {
+tc.snapThreshold = 3 * 0.005;
+const snapKnob = createKnob(snapKnobCanvas, 0, 5, 3, v => {
     tc.snapThreshold = v * 0.005;   // 0–0.025 in offset space (~0–40% of a 16th note)
     snapVal.textContent = v;
 });
