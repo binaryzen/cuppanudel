@@ -244,7 +244,10 @@ function createContextMenu(target, component, openModal) {
 		hideMenu();
 	}
 
-	return { dispose };
+	return {
+		dispose,
+		showAt: (x, y) => showMenu(x, y),
+	};
 }
 
 export { createContextMenu };
