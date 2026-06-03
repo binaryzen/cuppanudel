@@ -23,7 +23,10 @@ Holds canonical timing state. Mutated directly by UI controllers; read by metron
 | `beatsPerMeasure` | `int` | Number of beats per measure (1–13) |
 | `beatOffsets` | `float[]` | Normalized 0–1 position of each beat within the measure |
 | `beatVolumes` | `float[]` | Per-beat gain 0–1 (0 = silent, skipped entirely) |
+| `beatAccents` | `bool[]` | Per-beat accent flag; true = hi tick (index 1), false = lo tick (index 0) |
 | `visualDelayMs` | `float` | Visual playhead advance in ms to compensate display latency (0–100) |
+| `clickProviderRef` | `string` | ID of the active `SampleProvider`; default `"built-in:default"` |
+| `snapThreshold` | `float` | Grid snap radius in normalised offset space (0.0–0.025); 0 = off |
 
 `setBeatsPerMeasure(tc, n)` resets both `beatOffsets` (even spacing) and `beatVolumes` (all 1.0).
 
@@ -33,7 +36,13 @@ Holds canonical timing state. Mutated directly by UI controllers; read by metron
 Lookahead scheduler using `AudioContext.currentTime`. Reads `beatOffsets` and `beatVolumes` per beat so live edits take effect on the next scheduled beat.
 
 - **Lookahead:** 25ms; scheduler polls every 25ms via `setInterval`
-- **Click sound:** noise burst (8ms, `AudioBuffer` of white noise) + sine tone body (70ms); downbeat uses 1200 Hz / 0.5 gain, other beats use 900 Hz / 0.3 gain; both scaled by `beatVolumes[i]`; beat skipped entirely if volume < 0.01
+- **Click sound:** resolved via `SampleProvider` (see `specs/workspace.md §4`). The
+  metronome holds a reference to the active provider (determined by `tc.clickProviderRef`)
+  and calls `provider.getSample(isAccent ? 1 : 0)` each scheduled event to get a
+  pre-decoded `AudioBuffer`. The built-in default provider (`"built-in:default"`)
+  synthesises the existing noise burst + sine tone on init and caches both buffers.
+  Direct synthesis inside the scheduler is removed in favour of this interface.
+- **Beat skipped:** volume < 0.01 or `getSample()` returns null → no node created
 - **Playhead position:** `getPlayheadPosition()` returns normalized 0–1 position in current measure, computed from `AudioContext.currentTime + visualDelayMs/1000 - playbackStartTime`, modulo measure duration
 
 ---
@@ -173,13 +182,106 @@ RAF loop calls all visualizer `.draw()` methods each frame. Metronome runs on `s
 
 ---
 
+## Planned Features
+
+---
+
+### Alignment Monitor (Waveform Behind Playhead)
+
+**Module**: `poc/visualizers/alignment-monitor.js` — new canvas element placed behind
+the beat-grid canvas in the DOM (beat-grid handles and grid lines remain on top).
+
+An additional canvas layer that shows a rolling waveform history aligned to the measure
+timeline. Goal: let the user play a sample or live performance alongside the metronome
+and visually measure timing alignment.
+
+Key requirements:
+
+- **History depth**: 2 measures. The ring buffer holds exactly 2 measures of pixel columns.
+  (Make it a named constant `ALIGN_MEASURES = 2` for future tunability.)
+- **Draw mode**: continuous — the waveform scrolls left in real-time as the playhead
+  advances. No freeze-on-downbeat. The scroll position is derived from `measureStart` and
+  `nextBeatTime` (same variables the metronome scheduler uses), not from
+  `getPlayheadPosition()`, to avoid drift on BPM changes.
+- **Amplitude**: raw (`getFloatTimeDomainData()` peak per pixel column, no RMS smoothing).
+  Raw amplitude preserves transient detail needed for timing judgement.
+- X-axis mirrors the beat-grid coordinate space so transients align directly with beat
+  markers; gives an immediate visual of early / late hits.
+- Y-axis is amplitude; drawn at low opacity (≈ 0.35) so beat-grid elements remain legible.
+- Source: the shared waveform `AnalyserNode` (covers both mic and playback).
+- Data capture: ring-buffer of `Float32Array`, one entry per canvas pixel column,
+  updated each RAF frame. On each frame, compute how many columns the playhead has
+  advanced since the last frame, shift the ring buffer by that count, and fill the new
+  columns from `getFloatTimeDomainData()` peak samples.
+- The most recent measure's trace is drawn in a slightly brighter tint than older history.
+
+---
+
+### File Import (Loops and Backing Tracks)
+
+Users need to load audio files from external sources — in particular loops exported from
+hardware looper pedals — and play them back inside the app. This closes the loop (no pun
+intended) between the media pool, which can record and play, and external audio assets.
+
+Key requirements:
+
+- Accept audio files via `<input type="file">` or drag-and-drop onto the sample browser.
+- Supported formats: WAV, MP3, OGG, M4A, AIFF — whatever `AudioContext.decodeAudioData`
+  accepts in the target browser.
+- Decoded `AudioBuffer` is inserted into the `BufferTable`; a `SampleClip` entry is
+  created with the filename as the default label.
+- Files that exceed `MAX_RECORD_DURATION_MS` (30 s) are accepted with a warning; that
+  constant is tuned for recording latency and should not gate import.
+- Loop files from hardware loopers are often unnormalised — import should not alter gain;
+  the per-clip `gain` field is the user's tool for level matching.
+- Drag-and-drop should work on the sample browser panel (desktop) and via the file picker
+  on mobile (no drag support there).
+- See `specs/content-service.md` for the broader abstraction that file import belongs to.
+
+Resolves open question: *"File input: audio file playback as an alternative stream source?"*
+
+---
+
+### Tempo Presets
+
+Users have recurring configurations (time signature, swing feel, accent pattern, BPM) for
+different songs or practice contexts. They need to save and recall them instantly without
+re-dialling everything by hand.
+
+Key requirements:
+
+- A preset stores the full `TempoContext` snapshot: `bpm`, `beatsPerMeasure`,
+  `beatOffsets`, `beatVolumes`, `beatAccents`, `clickProviderRef`.
+- **Slot count**: `MAX_PRESETS = 8` (added to `constants.js`). Eight slots in a compact row.
+- Each slot has a short user-editable name (instrument/song name, genre, etc.); empty
+  slots show "—" and are overwritable.
+- **Canonical storage**: `localStorage` under key `cuppanudel.presets.v1` (JSON array of
+  8 entries, null for empty slots). The workspace YAML `presets` section is the portable
+  export form. On workspace import, the imported `presets` array overwrites localStorage.
+- **Save:** one-tap on the desired slot while in "save mode" (a Save button in the preset
+  bank activates save mode, highlights the bank for slot selection). Write current `tc`
+  snapshot to that slot in localStorage.
+- **Recall:** tapping a filled slot outside save mode applies the snapshot:
+  - If the metronome is running: stop it immediately, apply the new config, restart from
+    beat 0. No smooth transition; immediate stop-restart.
+  - If the metronome is stopped: apply the config only; do not auto-start.
+- Slots are shown in a compact horizontal row in the metro panel. Full preset name visible
+  on hover (desktop) or long-press (mobile).
+- Preset UI degrades gracefully if `localStorage` is unavailable (private browsing on iOS):
+  show empty slots, disable Save button, allow in-memory recall of presets loaded via
+  workspace import.
+
+Resolves open question: *"Persist session settings across page loads?"* (metronome config covered here; global session persistence separate).
+
+---
+
 ## Open Questions
 
-- [ ] File input: audio file playback as an alternative stream source?
+- [x] **File input: audio file playback** → addressed in Planned Features above
 - [ ] Multiple simultaneous visualizers on screen?
 - [x] **Session Context reactive vs polled** → resolved: polled (RAF loop); sufficient for POC
 - [ ] Target instruments beyond guitar (pitch range, display conventions)?
-- [ ] Persist session settings (BPM, tuning reference, etc.) across page loads?
+- [ ] Persist global session settings across page loads (tuning reference, visual delay, etc.)?
 - [ ] Port recorder from `ScriptProcessorNode` to `AudioWorklet` for `app/`
 - [ ] Fundamental frequency detection (autocorrelation / HPS) for more accurate tuner on guitar low strings
 - [ ] Framework choice for `app/` build
