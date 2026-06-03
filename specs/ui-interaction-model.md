@@ -69,6 +69,13 @@ Key points:
 **Compact:** draggable canvas circle. X = beat timing offset, Y = beat volume. Flash on
 playhead crossing. Accent state (hi/lo) encoded in colour (cyan = hi, grey = lo).
 
+**Touch target sizing:** The visual radius of handles is kept small (6 px) to avoid
+cluttering the grid, but the pointer hit-test radius must be significantly larger on touch
+devices — minimum 22 px (44 px diameter, per Apple HIG / WCAG 2.5.5). The implementation
+should use separate "visual radius" and "hit radius" constants so neither compromises the
+other. On desktop (mouse), the smaller visual radius is fine as a hit target because
+pointer precision is high.
+
 **Expanded (future):** A per-beat detail panel, triggered by tapping the handle, showing:
 - A labelled slider for volume (replaces Y-drag)
 - A labelled slider or nudge buttons for timing offset (replaces X-drag)

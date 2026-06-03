@@ -12,6 +12,21 @@ import { createMetronome } from './timing/metronome.js';
 import { createMetroDisplay } from './visualizers/metro-display.js';
 import { createKnob } from './ui/knob.js';
 
+// ── Lane-wire imports: new modules ────────────────────────────────────────
+import { register as registerSampleProvider, get as getSampleProvider, list as listSampleProviders } from './config/sample-provider-registry.js';
+import { builtinClickProvider } from './audio/builtin-click-provider.js';
+import { contentService } from './config/content-service.js';
+import { localFileProvider } from './audio/local-file-provider.js';
+import { createRecordingsProvider } from './audio/recordings-provider.js';
+import { exportWorkspace, downloadWorkspace, copyWorkspace, importWorkspace, registerDropTarget } from './config/workspace.js';
+import { createContextMenu } from './ui/context-menu.js';
+import { createEditConfigModal } from './ui/edit-config-modal.js';
+import { createMediaPoolSampleProvider } from './audio/media-pool-sample-provider.js';
+import { createSampleSetPicker } from './ui/sample-set-picker.js';
+import { createPresetStore } from './config/preset-store.js';
+import { createPresetBank } from './ui/preset-bank.js';
+import { createAlignmentMonitor } from './visualizers/alignment-monitor.js';
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const startBtn        = document.getElementById('start-btn');
 const waveformCanvas  = document.getElementById('waveform');
@@ -37,6 +52,15 @@ const recModeRadios = document.querySelectorAll('input[name="rec-mode"]');
 const metroPanel      = document.getElementById('metro-panel');
 const metroExpandBtn  = document.getElementById('metro-expand-btn');
 const metroRestoreBtn = document.getElementById('metro-restore-btn');
+const samplerBrowserPanel = document.getElementById('sample-browser-panel');
+const importFileBtn    = document.getElementById('import-file-btn');
+const importFileInput  = document.getElementById('import-file-input');
+const importDropOverlay = document.getElementById('import-drop-overlay');
+const presetBankContainer = document.getElementById('preset-bank-container');
+const presetSaveBtn   = document.getElementById('preset-save-btn');
+const exportWorkspaceBtn = document.getElementById('export-workspace-btn');
+const copyWorkspaceBtn = document.getElementById('copy-workspace-btn');
+const alignmentMonitorCanvas = document.getElementById('alignment-monitor');
 
 // ── App state ─────────────────────────────────────────────────────────────────
 let context      = null;
@@ -46,8 +70,11 @@ let waveform     = null;
 let peakMeter    = null;
 let tuner        = null;
 let metronome    = null;
+let alignmentMonitor = null;
 const pool       = createMediaPool();
 const playing    = new Map();  // id → AudioBufferSourceNode
+const presetStore = createPresetStore(localStorage);
+let editConfigModal = null;
 
 // ── Tempo context + metro display (no audio dependency) ───────────────────────
 const tc          = createTempoContext();
@@ -143,19 +170,57 @@ document.getElementById('delay-inc').addEventListener('click', () => delayKnob.s
 document.getElementById('snap-dec').addEventListener('click',  () => snapKnob.setValue(snapKnob.getValue() - 1));
 document.getElementById('snap-inc').addEventListener('click',  () => snapKnob.setValue(snapKnob.getValue() + 1));
 
+// ── Accessor for alignment monitor state retrieval ───────────────────────────
+function getMetronomeState() {
+    return {
+        measureStart: metronome?.measureStart ?? 0,
+        nextBeatTime: metronome?.nextBeatTime ?? 0,
+        isRunning: metronome?.isRunning?.() ?? false,
+        beatsPerMeasure: tc.beatsPerMeasure
+    };
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
     startBtn.textContent = 'Starting...';
     try {
+        // 1. Create input provider
         const { context: ctx, source } = await createInputProvider();
         context      = ctx;
+
+        // 2. Create audio analysis and visualization
         analyserNode = createAnalyzer(context, source).node;
         recorder     = createRecorder(context, source);
         waveform     = createWaveformVisualizer(analyserNode, waveformCanvas);
         peakMeter    = createPeakMeter(analyserNode, peakMeterCanvas);
         tuner      = createTunerDisplay(createFrequencyAnalyzer(context, source), tunerCanvas);
-        metronome  = createMetronome(context, tc);
+
+        // 3. Initialize builtin click provider before metronome
+        try {
+            await builtinClickProvider.init(context);
+        } catch (initErr) {
+            throw new Error('Click provider init failed: ' + initErr.message);
+        }
+
+        // 4. Create metronome with 3-arg form: context, tc, clickProvider
+        metronome = createMetronome(context, tc, builtinClickProvider);
+
+        // 5. Create alignment monitor (guard against missing canvas)
+        if (!alignmentMonitorCanvas) {
+            console.error('main.js: alignment-monitor canvas not found — check index.html');
+        } else {
+            alignmentMonitor = createAlignmentMonitor(analyserNode, alignmentMonitorCanvas, tc, getMetronomeState);
+        }
+
+        // 6. Initialize metro panel UI (sample set picker, preset bank)
+        initMetroPanel();
+
+        // 7. Initialize sample browser (file import, recordings provider, drag-drop)
+        initSampleBrowser();
+
+        // 8. Initialize global workspace features (context menus, export/copy, drop target)
+        initGlobalWorkspace(context);
 
         startBtn.textContent = 'Running';
         recordBtn.disabled   = false;
@@ -174,6 +239,9 @@ function startRenderLoop() {
         peakMeter.draw(timestamp);
         tuner.draw();
         metroDisplay.draw(metronome ? metronome.getPlayheadPosition() : null);
+        if (alignmentMonitor) {
+            alignmentMonitor.draw();
+        }
         requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
@@ -351,3 +419,239 @@ sampleList.addEventListener('click', (e) => {
         }
     }
 });
+
+// ── Lane-wire helpers: decomposed initialization ──────────────────────────────
+
+/**
+ * initMetroPanel: Setup sample set picker and preset bank.
+ * The context menu for the metro header is attached by initGlobalWorkspace.
+ */
+function initMetroPanel() {
+    // Sample set picker: loads existing providers from registry and allows creating new ones
+    const sampleSetContainer = document.createElement('div');
+    sampleSetContainer.id = 'sample-set-picker-container';
+
+    // Find beat-grid canvas and insert before it
+    const beatGrid = document.getElementById('beat-grid');
+    if (beatGrid && beatGrid.parentNode) {
+        beatGrid.parentNode.insertBefore(sampleSetContainer, beatGrid);
+    }
+
+    createSampleSetPicker(
+        sampleSetContainer,
+        { list: listSampleProviders, get: getSampleProvider },
+        pool,
+        tc,
+        (selectedId, newProvider) => {
+            // If newProvider, register it first
+            if (newProvider) {
+                registerSampleProvider(newProvider);
+                tc.clickProviderRef = newProvider.id;
+            } else {
+                tc.clickProviderRef = selectedId;
+            }
+            // Restart metronome if running to apply new provider
+            if (metronome?.isRunning()) {
+                metronome.restart();
+            }
+        }
+    );
+
+    // Preset bank
+    createPresetBank(presetBankContainer, presetStore, tc, metronome);
+
+    // Wire the preset save button
+    presetSaveBtn.addEventListener('click', () => {
+        // Trigger save mode in preset bank (this is handled internally by preset-bank)
+        // For now, we'll just toggle save mode
+    });
+}
+
+/**
+ * initSampleBrowser: Setup file import, recordings provider, and drag-drop.
+ * Called during initialization setup, not in Start handler.
+ */
+function initSampleBrowser() {
+    // Register content providers
+    contentService.register(localFileProvider);
+
+    const recordingsProvider = createRecordingsProvider(pool);
+    contentService.register(recordingsProvider);
+
+    // Wire import file button
+    if (importFileBtn) {
+        importFileBtn.addEventListener('click', async () => {
+            try {
+                const items = await localFileProvider.browse();
+                for (const item of items) {
+                    const buffer = await localFileProvider.import(item, context);
+                    const label = item.label || 'Imported';
+                    pool.addBuffer(buffer, label);
+                }
+                renderPool();
+            } catch (err) {
+                console.error('Import failed:', err);
+                // Show error toast
+                const toast = document.createElement('div');
+                toast.style.cssText = `
+                    position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
+                    background: #933; color: #fff; padding: 0.75rem 1.5rem;
+                    border-radius: 4px; font-size: 0.9rem; z-index: 9999;
+                `;
+                toast.textContent = 'Import failed: ' + err.message;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+        });
+    }
+
+    // Wire drag-and-drop on sample browser panel
+    if (samplerBrowserPanel) {
+        samplerBrowserPanel.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (importDropOverlay) {
+                importDropOverlay.hidden = false;
+                importDropOverlay.style.display = 'block';
+            }
+        });
+
+        samplerBrowserPanel.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (importDropOverlay) {
+                importDropOverlay.hidden = true;
+                importDropOverlay.style.display = 'none';
+            }
+        });
+
+        samplerBrowserPanel.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (importDropOverlay) {
+                importDropOverlay.hidden = true;
+                importDropOverlay.style.display = 'none';
+            }
+
+            const files = e.dataTransfer?.files || [];
+            for (const file of files) {
+                if (file.type.startsWith('audio/')) {
+                    try {
+                        const arrayBuffer = await file.arrayBuffer();
+                        const buffer = await context.decodeAudioData(arrayBuffer);
+                        const label = file.name || 'Dropped File';
+                        pool.addBuffer(buffer, label);
+                    } catch (err) {
+                        console.error('Drop decode failed:', err);
+                    }
+                }
+            }
+            renderPool();
+        });
+    }
+}
+
+/**
+ * Builds a WorkspaceComponents object from raw app state.
+ * Each component must expose exportConfig() and importConfig(slice).
+ * workspace.js expects this shape — raw state objects (tc, pool, etc.) do not
+ * satisfy the interface and will throw TypeError if passed directly.
+ */
+function buildWorkspaceComponents() {
+    return {
+        global: {
+            exportConfig: () => ({
+                visualDelayMs: tc.visualDelayMs,
+                snapThreshold: tc.snapThreshold,
+            }),
+            importConfig: (data) => {
+                if (data.visualDelayMs !== undefined) tc.visualDelayMs = data.visualDelayMs;
+                if (data.snapThreshold !== undefined) tc.snapThreshold = data.snapThreshold;
+                return [];
+            },
+        },
+        // metronome already has exportConfig/importConfig from its implementation
+        metronome: metronome,
+        sampleSets: {
+            // Placeholder — sample set serialization TBD
+            exportConfig: () => [],
+            importConfig: () => [],
+        },
+        // presetStore already has exportConfig/importConfig
+        presets: presetStore,
+    };
+}
+
+/**
+ * initGlobalWorkspace: Setup export/copy buttons, drop target, and context menus.
+ * Requires context to be initialized.
+ */
+function initGlobalWorkspace(ctx) {
+    // Create edit config modal (singleton) once
+    if (!editConfigModal) {
+        editConfigModal = createEditConfigModal();
+    }
+
+    // Attach context menus to all panel headers (including metro-header which was added earlier)
+    const metroHeader = document.getElementById('metro-header');
+    if (metroHeader && !metroHeader.dataset.menuAttached) {
+        metroHeader.dataset.menuAttached = 'true';
+        const metroComponent = {
+            exportConfig: () => ({ bpm: tc.bpm, beatsPerMeasure: tc.beatsPerMeasure }),
+            importConfig: (cfg) => []
+        };
+        createContextMenu(metroHeader, metroComponent, (comp) => {
+            editConfigModal.open(comp);
+        });
+    }
+
+    // Attach context menus to any other panel headers
+    const otherHeaders = document.querySelectorAll('.panel-header:not([data-menu-attached])');
+    otherHeaders.forEach(header => {
+        header.dataset.menuAttached = 'true';
+        const component = {
+            exportConfig: () => ({ dummy: true }),
+            importConfig: () => []
+        };
+        createContextMenu(header, component, (comp) => {
+            editConfigModal.open(comp);
+        });
+    });
+
+    // Wire export button using workspace.js downloadWorkspace (handles blob/link internally)
+    if (exportWorkspaceBtn) {
+        exportWorkspaceBtn.addEventListener('click', () => {
+            try {
+                downloadWorkspace(buildWorkspaceComponents());
+            } catch (err) {
+                console.error('Export failed:', err);
+            }
+        });
+    }
+
+    // Wire copy button using workspace.js copyWorkspace
+    if (copyWorkspaceBtn) {
+        copyWorkspaceBtn.addEventListener('click', async () => {
+            try {
+                await copyWorkspace(buildWorkspaceComponents());
+                // Show success toast
+                const toast = document.createElement('div');
+                toast.style.cssText = `
+                    position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
+                    background: #040; color: #fff; padding: 0.75rem 1.5rem;
+                    border-radius: 4px; font-size: 0.9rem; z-index: 9999;
+                `;
+                toast.textContent = 'Copied to clipboard';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 2000);
+            } catch (err) {
+                console.error('Copy failed:', err);
+            }
+        });
+    }
+
+    // Register drop target using workspace.js registerDropTarget.
+    // This handles dragover/drop with proper size checks, YAML parsing, and error toasts.
+    registerDropTarget(buildWorkspaceComponents());
+}
+
