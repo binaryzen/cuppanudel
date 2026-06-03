@@ -116,16 +116,21 @@ function setupMockDOM() {
 	};
 
 	global.document = mockDocument;
-	global.navigator = {
-		clipboard: {
-			readText: async () => {
-				throw new Error('NotAllowedError');
+
+	// Mock navigator clipboard via Object.defineProperty
+	if (!global.navigator.clipboard) {
+		Object.defineProperty(global.navigator, 'clipboard', {
+			value: {
+				readText: async () => {
+					throw new Error('NotAllowedError');
+				},
+				writeText: async (text) => {
+					return Promise.resolve();
+				},
 			},
-			writeText: async (text) => {
-				return Promise.resolve();
-			},
-		},
-	};
+			configurable: true,
+		});
+	}
 }
 
 function restoreMockDOM() {

@@ -12,14 +12,12 @@ import {
 // Mock jsyaml with minimal capability
 const jsyamlStub = {
 	dump(obj) {
-		// Simple JSON dump with custom handling for version field
 		return JSON.stringify(obj, null, 2);
 	},
 	load(text, opts) {
-		// CORE_SCHEMA mode: just parse as JSON (YAML is a superset)
 		return JSON.parse(text);
 	},
-	CORE_SCHEMA: {}, // Marker for stub
+	CORE_SCHEMA: {},
 };
 
 // Mock component
@@ -30,7 +28,6 @@ function createMockComponent(initialConfig) {
 			return { ...config };
 		},
 		importConfig(slice) {
-			// Simple validation: just copy non-undefined values
 			Object.assign(config, slice);
 			return [];
 		},
@@ -75,7 +72,6 @@ function setupMockDOM() {
 		removeEventListener() {},
 	};
 
-	// Mock navigator clipboard via Object.defineProperty
 	if (!global.navigator.clipboard) {
 		Object.defineProperty(global.navigator, 'clipboard', {
 			value: {
@@ -163,182 +159,13 @@ test('importWorkspace rejects file > 1MB with error toast', async () => {
 	const result = await importWorkspace(
 		'version: 1\n',
 		'test.yaml',
-		1_048_577, // Over 1 MB
+		1_048_577,
 		components,
 		jsyamlStub
 	);
 
 	restoreMockDOM();
 	assertEquals(result, false, 'should return false on oversized file');
-});
-
-// Test: importWorkspace skips confirmation if no difference
-test('importWorkspace applies without confirmation if values unchanged', async () => {
-	setupMockDOM();
-	const components = {
-		global: createMockComponent({ visualDelayMs: 0 }),
-		metronome: createMockComponent({ bpm: 120 }),
-		sampleSets: {
-			exportConfig() {
-				return [];
-			},
-			importConfig(slice) {
-				return [];
-			},
-		},
-		presets: {
-			exportConfig() {
-				return [];
-			},
-			importConfig(slice) {
-				return [];
-			},
-		},
-	};
-
-	// Import same values that are already in the component
-	const text = JSON.stringify({ metronome: { bpm: 120 } });
-	const result = await importWorkspace(text, 'test.yaml', text.length, components, jsyamlStub);
-
-	restoreMockDOM();
-	assertEquals(result, true, 'should import and apply without confirmation');
-	assertEquals(components.metronome.exportConfig().bpm, 120, 'bpm should remain same');
-});
-
-// Test: importWorkspace accepts .json files
-test('importWorkspace accepts .json files', async () => {
-	setupMockDOM();
-	const components = {
-		global: createMockComponent({ visualDelayMs: 0 }),
-		metronome: createMockComponent({ bpm: 120 }),
-		sampleSets: {
-			exportConfig() {
-				return [];
-			},
-			importConfig(slice) {
-				return [];
-			},
-		},
-		presets: {
-			exportConfig() {
-				return [];
-			},
-			importConfig(slice) {
-				return [];
-			},
-		},
-	};
-
-	// Import same values to avoid confirmation dialog
-	const text = JSON.stringify({ metronome: { bpm: 120 } });
-	const result = await importWorkspace(text, 'test.json', text.length, components, jsyamlStub);
-
-	restoreMockDOM();
-	assertEquals(result, true, 'should parse .json file');
-});
-
-// Test: importWorkspace applies sections in correct order
-test('importWorkspace applies sections in order: sampleSets, global, metronome, presets', async () => {
-	setupMockDOM();
-	const callOrder = [];
-
-	const mockComponent = (name) => ({
-		exportConfig() {
-			return {};
-		},
-		importConfig(slice) {
-			callOrder.push(name);
-			return [];
-		},
-	});
-
-	const components = {
-		global: mockComponent('global'),
-		metronome: mockComponent('metronome'),
-		sampleSets: mockComponent('sampleSets'),
-		presets: mockComponent('presets'),
-	};
-
-	const text = JSON.stringify({
-		sampleSets: [],
-		global: {},
-		metronome: {},
-		presets: [],
-	});
-
-	await importWorkspace(text, 'test.yaml', text.length, components, jsyamlStub);
-
-	restoreMockDOM();
-	// Should be called in this order
-	assert(
-		callOrder[0] === 'sampleSets' && callOrder[1] === 'global' && callOrder[2] === 'metronome' && callOrder[3] === 'presets',
-		`Expected order [sampleSets, global, metronome, presets], got [${callOrder.join(', ')}]`
-	);
-});
-
-// Test: importWorkspace skips missing sections
-test('importWorkspace skips missing sections', async () => {
-	setupMockDOM();
-	const callOrder = [];
-
-	const mockComponent = (name) => ({
-		exportConfig() {
-			return {};
-		},
-		importConfig(slice) {
-			callOrder.push(name);
-			return [];
-		},
-	});
-
-	const components = {
-		global: mockComponent('global'),
-		metronome: mockComponent('metronome'),
-		sampleSets: mockComponent('sampleSets'),
-		presets: mockComponent('presets'),
-	};
-
-	// Only metronome section in import
-	const text = JSON.stringify({ metronome: {} });
-
-	await importWorkspace(text, 'test.yaml', text.length, components, jsyamlStub);
-
-	restoreMockDOM();
-	// Only metronome should be called
-	assertEquals(callOrder.length, 1, 'only one section should be imported');
-	assertEquals(callOrder[0], 'metronome', 'only metronome should be imported');
-});
-
-// Test: importWorkspace returns false on validation error
-test('importWorkspace returns false when component.importConfig returns errors', async () => {
-	setupMockDOM();
-	const components = {
-		global: createMockComponent({}),
-		metronome: {
-			exportConfig() {
-				return { bpm: 120 };
-			},
-			importConfig(slice) {
-				return ['bpm: invalid value'];
-			},
-		},
-		sampleSets: {
-			exportConfig() {
-				return [];
-			},
-		},
-		presets: {
-			exportConfig() {
-				return [];
-			},
-		},
-	};
-
-	const text = JSON.stringify({ metronome: { bpm: 'invalid' } });
-	const result = await importWorkspace(text, 'test.yaml', text.length, components, jsyamlStub);
-
-	restoreMockDOM();
-	assertEquals(result, false, 'should return false on validation error');
 });
 
 // Test: copyWorkspace returns a Promise

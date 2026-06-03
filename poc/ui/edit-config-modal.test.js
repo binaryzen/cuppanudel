@@ -49,6 +49,7 @@ function setupMockDOM() {
 				textContent: '',
 				innerHTML: '',
 				children: [],
+				value: '',
 				addEventListener: () => {},
 				removeEventListener: () => {},
 				appendChild(child) {
@@ -56,6 +57,9 @@ function setupMockDOM() {
 				},
 				click() {
 					this._onclick?.();
+				},
+				focus() {
+					// No-op for test
 				},
 				get onclick() {
 					return this._onclick;
