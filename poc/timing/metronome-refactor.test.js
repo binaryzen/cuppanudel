@@ -160,6 +160,7 @@ test('restart() called while stopped behaves like start()', () => {
     const pos = metro.getPlayheadPosition();
     assert(pos !== null, 'getPlayheadPosition should not be null after restart while stopped');
     assert(pos >= 0 && pos <= 0.01, 'Position should be near 0');
+    metro.stop();  // Clean up
 });
 
 test('scheduler calls getSample(1) for accent beats and getSample(0) for regular beats', () => {
@@ -192,6 +193,7 @@ test('scheduler calls getSample(1) for accent beats and getSample(0) for regular
     // Let scheduler run for a bit (at least one cycle)
     // In this test, we can't easily drive time forward, so we check the basic structure
     assert(typeof sampleCalls !== 'undefined', 'getSample should be called during scheduling');
+    metro.stop();  // Clean up
 });
 
 test('scheduler skips beat if volume < 0.01', () => {
@@ -209,6 +211,7 @@ test('scheduler skips beat if volume < 0.01', () => {
     // beat 0 should not be scheduled (no source created)
     // We verify by checking that the metronome doesn't throw
     assertEquals(metro.isRunning(), true);
+    metro.stop();  // Clean up
 });
 
 test('scheduler logs error when getSample() returns null', () => {
@@ -264,6 +267,7 @@ test('start() called while running is a no-op', () => {
 
     // Position should not reset dramatically (it's a no-op)
     assert(secondPos !== null, 'Should still be running');
+    metro.stop();  // Clean up
 });
 
 test('stop() called while stopped is a no-op', () => {
