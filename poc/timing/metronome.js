@@ -74,5 +74,14 @@ export function createMetronome(context, tc, clickProvider) {
         return ((elapsed % dur) + dur) % dur / dur;
     }
 
-    return { start, stop, restart, getPlayheadPosition, isRunning: () => running };
+    return {
+        start,
+        stop,
+        restart,
+        getPlayheadPosition,
+        isRunning: () => running,
+        // Expose internal scheduler state for alignment monitor and other consumers
+        get measureStart() { return measureStart; },
+        get nextBeatTime() { return nextBeatTime; }
+    };
 }

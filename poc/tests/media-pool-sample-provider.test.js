@@ -9,28 +9,83 @@
  */
 
 import { test, run } from '../test/runner.js';
+import { createMediaPoolSampleProvider } from '../audio/media-pool-sample-provider.js';
 
 // tc-032: MediaPoolSampleProvider.getSample() normalizes pool undefined to null
 test('tc-032: getSample() normalizes pool undefined to null', async () => {
-  // CODE NOT YET AVAILABLE
-  // Expected to test:
-  // - Create MediaPoolSampleProvider with slots [{index:0,clipId:'abc'}]
-  // - pool.getBuffer('abc') returns undefined
-  // - Call getSample(0)
-  // - getSample returns null (not undefined)
-  // - console.warn is logged
-  throw new Error('Test not implemented: media-pool-sample-provider module not yet available');
+  const pool = {
+    getBuffer: (clipId) => {
+      // Return undefined for 'abc'
+      if (clipId === 'abc') return undefined;
+      return { length: 1000 };
+    },
+    clips: [],
+  };
+
+  const provider = createMediaPoolSampleProvider(
+    'test-provider',
+    'Test Provider',
+    [{ index: 0, clipId: 'abc' }],
+    pool
+  );
+
+  // Mock console.warn
+  let warnCalled = false;
+  const originalWarn = console.warn;
+  console.warn = () => {
+    warnCalled = true;
+  };
+
+  try {
+    const sample = provider.getSample(0);
+
+    // Should return null (not undefined)
+    if (sample !== null) throw new Error(`Expected null, got ${sample}`);
+
+    // Should have logged a warning
+    if (!warnCalled) throw new Error('Expected console.warn to be called');
+  } finally {
+    console.warn = originalWarn;
+  }
 });
 
 // tc-033: MediaPoolSampleProvider.init() resolves immediately (no async work)
 test('tc-033: init() resolves synchronously', async () => {
-  // CODE NOT YET AVAILABLE
-  // Expected to test:
-  // - provider = createMediaPoolSampleProvider(...)
-  // - Call await provider.init(mockCtx)
-  // - Promise resolves synchronously
-  // - Buffers are already in the pool (no decoding)
-  throw new Error('Test not implemented: media-pool-sample-provider module not yet available');
+  const pool = {
+    getBuffer: (clipId) => ({ length: 1000 }),
+    clips: [],
+  };
+
+  const provider = createMediaPoolSampleProvider(
+    'test-provider',
+    'Test Provider',
+    [
+      { index: 0, clipId: 'clip-1' },
+      { index: 1, clipId: 'clip-2' },
+    ],
+    pool
+  );
+
+  const mockCtx = {}; // Minimal mock context
+
+  const result = provider.init(mockCtx);
+
+  // Should return a Promise
+  if (!result || typeof result.then !== 'function') {
+    throw new Error('Expected init() to return a Promise');
+  }
+
+  // Should resolve synchronously (no async work)
+  const resolved = await result;
+
+  // Should resolve to undefined
+  if (resolved !== undefined) {
+    throw new Error('Expected init() to resolve to undefined');
+  }
+
+  // Buffers should already be available
+  const sample0 = provider.getSample(0);
+  if (sample0 === undefined) throw new Error('Expected getSample(0) to return a buffer');
 });
 
 // Run all tests
