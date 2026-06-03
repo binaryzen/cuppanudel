@@ -12,6 +12,21 @@ import { createMetronome } from './timing/metronome.js';
 import { createMetroDisplay } from './visualizers/metro-display.js';
 import { createKnob } from './ui/knob.js';
 
+// ── Lane-wire imports: new modules ────────────────────────────────────────
+import { register as registerSampleProvider, get as getSampleProvider, list as listSampleProviders } from './config/sample-provider-registry.js';
+import { builtinClickProvider } from './audio/builtin-click-provider.js';
+import { contentService } from './config/content-service.js';
+import { localFileProvider } from './audio/local-file-provider.js';
+import { createRecordingsProvider } from './audio/recordings-provider.js';
+import { exportWorkspace, importWorkspace } from './config/workspace.js';
+import { createContextMenu } from './ui/context-menu.js';
+import { createEditConfigModal } from './ui/edit-config-modal.js';
+import { createMediaPoolSampleProvider } from './audio/media-pool-sample-provider.js';
+import { createSampleSetPicker } from './ui/sample-set-picker.js';
+import { createPresetStore } from './config/preset-store.js';
+import { createPresetBank } from './ui/preset-bank.js';
+import { createAlignmentMonitor } from './visualizers/alignment-monitor.js';
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const startBtn        = document.getElementById('start-btn');
 const waveformCanvas  = document.getElementById('waveform');
@@ -37,6 +52,15 @@ const recModeRadios = document.querySelectorAll('input[name="rec-mode"]');
 const metroPanel      = document.getElementById('metro-panel');
 const metroExpandBtn  = document.getElementById('metro-expand-btn');
 const metroRestoreBtn = document.getElementById('metro-restore-btn');
+const samplerBrowserPanel = document.getElementById('sample-browser-panel');
+const importFileBtn    = document.getElementById('import-file-btn');
+const importFileInput  = document.getElementById('import-file-input');
+const importDropOverlay = document.getElementById('import-drop-overlay');
+const presetBankContainer = document.getElementById('preset-bank-container');
+const presetSaveBtn   = document.getElementById('preset-save-btn');
+const exportWorkspaceBtn = document.getElementById('export-workspace-btn');
+const copyWorkspaceBtn = document.getElementById('copy-workspace-btn');
+const alignmentMonitorCanvas = document.getElementById('alignment-monitor');
 
 // ── App state ─────────────────────────────────────────────────────────────────
 let context      = null;
@@ -46,8 +70,11 @@ let waveform     = null;
 let peakMeter    = null;
 let tuner        = null;
 let metronome    = null;
+let alignmentMonitor = null;
 const pool       = createMediaPool();
 const playing    = new Map();  // id → AudioBufferSourceNode
+const presetStore = createPresetStore(localStorage);
+let editConfigModal = null;
 
 // ── Tempo context + metro display (no audio dependency) ───────────────────────
 const tc          = createTempoContext();
