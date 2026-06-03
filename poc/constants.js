@@ -6,3 +6,6 @@ export const MAX_SAMPLES = 64;
 
 // ScriptProcessorNode buffer size for recording (ms → nearest power of 2 samples computed at runtime)
 export const CHUNK_SIZE_MS = 100;
+
+// Maximum number of preset slots
+export const MAX_PRESETS = 8;
