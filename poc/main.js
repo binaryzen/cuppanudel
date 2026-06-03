@@ -170,6 +170,16 @@ document.getElementById('delay-inc').addEventListener('click', () => delayKnob.s
 document.getElementById('snap-dec').addEventListener('click',  () => snapKnob.setValue(snapKnob.getValue() - 1));
 document.getElementById('snap-inc').addEventListener('click',  () => snapKnob.setValue(snapKnob.getValue() + 1));
 
+// ── Accessor for alignment monitor state retrieval ───────────────────────────
+function getMetronomeState() {
+    return {
+        measureStart: metronome?.measureStart ?? 0,
+        nextBeatTime: metronome?.nextBeatTime ?? 0,
+        isRunning: metronome?.isRunning?.() ?? false,
+        beatsPerMeasure: tc.beatsPerMeasure
+    };
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
