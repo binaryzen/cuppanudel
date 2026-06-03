@@ -22,7 +22,6 @@ function createPresetBank(container, store, tc, metronome, docRef = document) {
 	for (let i = 0; i < MAX_PRESETS; i++) {
 		const button = docRef.createElement('button');
 		button.className = 'preset-slot';
-		button.dataset = button.dataset || {};
 		button.dataset.index = i;
 		button.textContent = '—';
 		container.appendChild(button);
