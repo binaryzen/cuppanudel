@@ -92,75 +92,49 @@ if (typeof globalThis.window === 'undefined') {
 }
 
 // tc-019: importWorkspace orchestrates validation and component importConfig in dependency order
-test('tc-019: importWorkspace orchestrates component imports in order', () => {
-  // Directly test the import order semantics by calling components in sequence
-  // The workspace.js code imports in order: sampleSets → global → metronome → presets
-  // This is visible in the workspace.js:254-259 importOrder array.
-
-  // We test that a mock workspace orchestration respects this order:
+test('tc-019: importWorkspace orchestrates component imports in order', async () => {
   let importOrder = [];
 
+  // Each exportConfig returns {} and the YAML sections are also {}.
+  // deepEqual({}, {}) = true for all sections → anyDifference = false → no confirmation
+  // dialog is shown. importWorkspace then calls importConfig for each section in order.
   const components = {
     sampleSets: {
-      importConfig: (obj) => {
-        importOrder.push('sampleSets');
-        return [];
-      },
-      exportConfig: () => ({ samples: [] }),
+      importConfig: (obj) => { importOrder.push('sampleSets'); return []; },
+      exportConfig: () => ({}),
     },
     global: {
-      importConfig: (obj) => {
-        importOrder.push('global');
-        return [];
-      },
+      importConfig: (obj) => { importOrder.push('global'); return []; },
       exportConfig: () => ({}),
     },
     metronome: {
-      importConfig: (obj) => {
-        importOrder.push('metronome');
-        return [];
-      },
+      importConfig: (obj) => { importOrder.push('metronome'); return []; },
       exportConfig: () => ({}),
     },
     presets: {
-      importConfig: (obj) => {
-        importOrder.push('presets');
-        return [];
-      },
-      exportConfig: () => ({ presets: [] }),
+      importConfig: (obj) => { importOrder.push('presets'); return []; },
+      exportConfig: () => ({}),
     },
   };
 
-  // Simulate the order that workspace.js uses (from lines 254-259)
-  const importOrderSpec = [
-    { key: 'sampleSets', component: components.sampleSets },
-    { key: 'global', component: components.global },
-    { key: 'metronome', component: components.metronome },
-    { key: 'presets', component: components.presets },
-  ];
+  // Use .json extension so workspace.js uses JSON.parse (no jsyaml dependency)
+  const yaml = JSON.stringify({ version: 1, sampleSets: {}, global: {}, metronome: {}, presets: {} });
+  await importWorkspace(yaml, 'test.json', 100, components, mockJsyaml);
 
-  // Execute imports in the specified order (simulating what workspace.js does)
-  for (const { key, component } of importOrderSpec) {
-    if (component) {
-      component.importConfig({});
-    }
-  }
-
-  // Verify the order: sampleSets → global → metronome → presets
   const firstSampleSets = importOrder.indexOf('sampleSets');
   const firstGlobal = importOrder.indexOf('global');
   const firstMetronome = importOrder.indexOf('metronome');
   const firstPresets = importOrder.indexOf('presets');
 
-  if (firstSampleSets === -1) throw new Error('Expected sampleSets to be called');
-  if (firstGlobal === -1) throw new Error('Expected global to be called');
-  if (firstMetronome === -1) throw new Error('Expected metronome to be called');
-  if (firstPresets === -1) throw new Error('Expected presets to be called');
+  if (firstSampleSets === -1) throw new Error('importWorkspace did not call sampleSets.importConfig');
+  if (firstGlobal === -1) throw new Error('importWorkspace did not call global.importConfig');
+  if (firstMetronome === -1) throw new Error('importWorkspace did not call metronome.importConfig');
+  if (firstPresets === -1) throw new Error('importWorkspace did not call presets.importConfig');
 
-  if (firstSampleSets !== 0) throw new Error('sampleSets must be first');
-  if (firstGlobal !== 1) throw new Error('global must be second');
-  if (firstMetronome !== 2) throw new Error('metronome must be third');
-  if (firstPresets !== 3) throw new Error('presets must be fourth');
+  if (firstSampleSets !== 0) throw new Error(`sampleSets must be first (got index ${firstSampleSets})`);
+  if (firstGlobal !== 1) throw new Error(`global must be second (got index ${firstGlobal})`);
+  if (firstMetronome !== 2) throw new Error(`metronome must be third (got index ${firstMetronome})`);
+  if (firstPresets !== 3) throw new Error(`presets must be fourth (got index ${firstPresets})`);
 });
 
 // tc-020: importWorkspace enforces 1 MB file size cap

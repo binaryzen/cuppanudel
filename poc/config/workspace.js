@@ -9,10 +9,10 @@ import { validateAndApply, serialize } from './property-mapper.js';
 // Deep equality for confirmation dialog decision.
 // Scalars: strict ===
 // Floats: tolerance |a - b| < 1e-6
-// Arrays: recursive element-wise comparison
+// Arrays/Objects: recursive element-wise comparison
 function deepEqual(a, b) {
+	if (a === b) return true;
 	if (typeof a === 'number' && typeof b === 'number') {
-		// Both numbers: use float tolerance
 		return Math.abs(a - b) < 1e-6;
 	}
 	if (typeof a !== typeof b) return false;
@@ -20,8 +20,13 @@ function deepEqual(a, b) {
 		if (a.length !== b.length) return false;
 		return a.every((val, i) => deepEqual(val, b[i]));
 	}
-	// Scalars: strict ===
-	return a === b;
+	if (typeof a === 'object' && a !== null && b !== null && !Array.isArray(a)) {
+		const keysA = Object.keys(a);
+		const keysB = Object.keys(b);
+		if (keysA.length !== keysB.length) return false;
+		return keysA.every(k => k in b && deepEqual(a[k], b[k]));
+	}
+	return false;
 }
 
 // Helper: create and show an error toast.

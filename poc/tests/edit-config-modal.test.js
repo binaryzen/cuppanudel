@@ -258,59 +258,60 @@ test('tc-048: modal Escape key closes without calling importConfig', async () =>
 
 // tc-049: Edit config modal shows parse error inline on malformed YAML
 test('tc-049: modal shows parse error on malformed YAML', async () => {
-  // The modal implementation includes error handling for malformed YAML
-  // This is verified by checking the implementation code includes:
-  // 1. Try-catch block around jsyaml.load
-  // 2. Error display without closing the modal
-  // 3. Prevents importConfig call on parse error
-
-  // For this integration test, we verify the modal is created and has the
-  // error handling capability by checking it has proper event listeners
-  // and error container element
-
+  let importConfigCalled = false;
   const modal = createEditConfigModal();
 
-  if (!modal) throw new Error('Failed to create modal');
-
-  // The implementation should have error handling in the Apply button handler
-  // This test verifies the structure is in place
-  if (typeof modal.open !== 'function') throw new Error('Modal should have open method');
-  if (typeof modal.close !== 'function') throw new Error('Modal should have close method');
-  if (typeof modal.isOpen !== 'function') throw new Error('Modal should have isOpen method');
-
-  // Verify a component can be opened and the modal renders error element
   const component = {
     exportConfig: () => ({ bpm: 120 }),
-    importConfig: () => [],
+    importConfig: () => { importConfigCalled = true; return []; },
+  };
+
+  // Mock jsyaml that always throws (simulates malformed YAML parse failure)
+  globalThis.window.jsyaml = {
+    load: () => { throw new Error('unexpected end of the stream within a flow collection'); },
+    dump: (obj) => JSON.stringify(obj),
+    CORE_SCHEMA: {},
   };
 
   modal.open(component);
   if (!modal.isOpen()) throw new Error('Expected modal to be open');
 
-  // Verify the modal's DOM structure includes the error container
-  let errorContainerFound = false;
-  if (globalThis.document.body._children) {
-    for (const el of globalThis.document.body._children) {
-      if (el.style && el.style.cssText && el.style.cssText.includes('background: #300')) {
-        errorContainerFound = true;
-        break;
-      }
-      // Recursively search children
-      function searchChildren(parent) {
-        if (!parent._children) return;
-        for (const child of parent._children) {
-          if (child.style && child.style.cssText && child.style.cssText.includes('background: #300')) {
-            errorContainerFound = true;
-            return;
-          }
-          searchChildren(child);
-        }
-      }
-      searchChildren(el);
+  // Find textarea and Apply button in the modal DOM tree
+  let applyBtn = null;
+  let textarea = null;
+
+  function findElements(el) {
+    if (!el || !el._children) return;
+    for (const child of el._children) {
+      if (child.textContent === 'Apply') applyBtn = child;
+      if (child.value !== undefined && !textarea) textarea = child;
+      findElements(child);
     }
   }
 
-  if (!errorContainerFound) throw new Error('Error container element should be present in modal');
+  const modalEl = globalThis.document.body._children[globalThis.document.body._children.length - 1];
+  findElements(modalEl);
+
+  if (!textarea) throw new Error('Textarea not found in modal');
+  if (!applyBtn) throw new Error('Apply button not found in modal');
+
+  // Enter malformed YAML content
+  textarea.value = '{ invalid: yaml: [[{';
+
+  // Click Apply
+  if (applyBtn._listeners && applyBtn._listeners.click && applyBtn._listeners.click.length > 0) {
+    applyBtn._listeners.click[0]();
+  } else if (applyBtn.onclick) {
+    applyBtn.onclick();
+  } else {
+    throw new Error('Apply button has no click handler');
+  }
+
+  // Modal must remain open — parse error does not close it
+  if (!modal.isOpen()) throw new Error('Modal should remain open after parse error');
+
+  // importConfig must NOT have been called (parse failed before reaching importConfig)
+  if (importConfigCalled) throw new Error('importConfig should not be called when YAML parse fails');
 
   modal.close();
 });
