@@ -9,6 +9,7 @@ import { createFrequencyAnalyzer } from './audio/frequency-analyzer.js';
 import { createTunerDisplay } from './visualizers/tuner-display.js';
 import { createTempoContext, setBeatsPerMeasure } from './timing/tempo-context.js';
 import { makeObservable } from './state/observable.js';
+import { TC_KNOB_BINDINGS } from './state/tc-bindings.js';
 import { createMetronome } from './timing/metronome.js';
 import { createMetroDisplay } from './visualizers/metro-display.js';
 import { createKnob } from './ui/knob.js';
@@ -110,12 +111,17 @@ delayVal.textContent = tc.visualDelayMs + 'ms';
 snapVal.textContent  = Math.round(tc.snapThreshold / 0.005);
 
 // ── Knob ↔ tc bindings ────────────────────────────────────────────────────────
-// Any external write to tc (preset recall, YAML import, etc.) automatically
-// updates the corresponding knob dial and display span via its own onChange.
-tc.subscribe('bpm',             v => bpmKnob.setValue(v));
-tc.subscribe('beatsPerMeasure', v => beatsKnob.setValue(v));
-tc.subscribe('visualDelayMs',   v => delayKnob.setValue(v));
-tc.subscribe('snapThreshold',   v => snapKnob.setValue(Math.round(v / 0.005)));
+// Driven by TC_KNOB_BINDINGS: add a new entry there to cover a new bound
+// property — no other wiring needed here.
+const _knobMap = {
+    bpm:             bpmKnob,
+    beatsPerMeasure: beatsKnob,
+    visualDelayMs:   delayKnob,
+    snapThreshold:   snapKnob,
+};
+TC_KNOB_BINDINGS.forEach(({ key, toKnob }) =>
+    tc.subscribe(key, v => _knobMap[key].setValue(toKnob(v)))
+);
 
 // ── Metro fullscreen toggle ───────────────────────────────────────────────────
 const BEAT_GRID_DEFAULT_W = 400;
