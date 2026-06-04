@@ -18,16 +18,16 @@ export function createAlignmentMonitor(analyser, canvas, tc, getMetronomeState) 
     // Pre-allocate the analyser read buffer
     const analyserBuffer = new Float32Array(analyser.fftSize);
 
-    // Track the previous measureStart to detect advances
-    let prevMeasureStart = null;
+    // Fractional-column accumulator: avoids drift from rounding on every frame
+    let pendingColumns = 0;
+    let prevTimestamp = null;
 
-    function getMeasureDurationSeconds(tc) {
-        if (!tc.bpm || !tc.beatsPerMeasure) return 1;
-        // duration = (beatsPerMeasure / bpm) * 60 seconds
-        return (tc.beatsPerMeasure / tc.bpm) * 60;
+    function getMeasureDurationMs(tc) {
+        if (!tc.bpm || !tc.beatsPerMeasure) return 2000;
+        return (tc.beatsPerMeasure / tc.bpm) * 60000;
     }
 
-    function draw() {
+    function draw(timestamp) {
         const state = getMetronomeState();
         const width = canvas.width;
         const height = canvas.height;
@@ -36,63 +36,56 @@ export function createAlignmentMonitor(analyser, canvas, tc, getMetronomeState) 
         // If metronome not running or invalid state, clear and return
         if (!state || !state.isRunning) {
             ctx.clearRect(0, 0, width, height);
+            prevTimestamp = null;
+            pendingColumns = 0;
             return;
         }
 
-        // Compute how many columns to advance since last frame
-        // Column advance = (measureStart advancement) / measureDuration * canvasWidth
-        let columnsToAdvance = 0;
-        if (prevMeasureStart !== null && state.measureStart !== prevMeasureStart) {
-            const measureDuration = getMeasureDurationSeconds(tc);
-            const measureAdvance = state.measureStart - prevMeasureStart;
-            columnsToAdvance = Math.round((measureAdvance / measureDuration) * width);
-        }
-        prevMeasureStart = state.measureStart;
+        // Advance ring buffer based on real elapsed time between frames.
+        // Using RAF timestamp avoids the measureStart approach, which only
+        // changes once per measure and leaves the buffer empty between beats.
+        if (prevTimestamp !== null) {
+            const deltaMs = timestamp - prevTimestamp;
+            pendingColumns += (deltaMs / getMeasureDurationMs(tc)) * width;
+            const columnsToAdvance = Math.floor(pendingColumns);
+            pendingColumns -= columnsToAdvance;
 
-        // Advance the ring buffer by the computed amount
-        // Each advancement shifts columns and fills new ones from the analyser
-        for (let col = 0; col < columnsToAdvance; col++) {
-            // Read peak amplitude from analyser for this column
-            analyser.getFloatTimeDomainData(analyserBuffer);
-            let peak = 0;
-            for (let i = 0; i < analyserBuffer.length; i++) {
-                peak = Math.max(peak, Math.abs(analyserBuffer[i]));
+            for (let col = 0; col < columnsToAdvance; col++) {
+                analyser.getFloatTimeDomainData(analyserBuffer);
+                let peak = 0;
+                for (let i = 0; i < analyserBuffer.length; i++) {
+                    peak = Math.max(peak, Math.abs(analyserBuffer[i]));
+                }
+                ringBuffer[ringIndex] = peak;
+                ringIndex = (ringIndex + 1) % ringBuffer.length;
             }
-
-            // Write to ring buffer at current position
-            ringBuffer[ringIndex] = peak;
-            ringIndex = (ringIndex + 1) % ringBuffer.length;
         }
+        prevTimestamp = timestamp;
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
 
-        // Draw the ring buffer as a continuous scrolling waveform
-        // We have ALIGN_MEASURES * width columns total
-        // The most recent column is at (ringIndex - 1) % ringBuffer.length
-        // Draw from oldest to newest
+        // Draw both measures overlaid at the same x positions (0..width-1).
+        // physicalCol 0..width-1        → older measure  → OPACITY_OLD
+        // physicalCol width..2*width-1  → current measure → OPACITY_CURRENT
+        // x = physicalCol % width maps both ranges onto the canvas.
 
         const bufferLen = ringBuffer.length;
         const colsPerMeasure = width;
 
         for (let col = 0; col < bufferLen; col++) {
-            // Which physical column does this ring buffer entry map to?
-            // The oldest column (ringIndex) goes to x=0, newest goes to x=width-1 (but wraps)
             const physicalCol = (col - ringIndex + bufferLen) % bufferLen;
-
-            // Which measure does this column belong to?
-            // 0 to width-1 = measure 0 (older)
-            // width to 2*width-1 = measure 1 (current)
+            const x = physicalCol % colsPerMeasure;
             const measureIdx = Math.floor(physicalCol / colsPerMeasure);
             const opacity = (measureIdx < ALIGN_MEASURES - 1) ? OPACITY_OLD : OPACITY_CURRENT;
 
-            // Draw this column as a vertical line
-            const x = physicalCol;
             const amplitude = ringBuffer[col];
+            if (amplitude < 0.001) continue;
+
             const y1 = mid - (amplitude * mid);
             const y2 = mid + (amplitude * mid);
 
-            ctx.strokeStyle = `rgba(79, 204, 255, ${opacity})`;  // cyan with variable opacity
+            ctx.strokeStyle = `rgba(79, 204, 255, ${opacity})`;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(x, y1);
@@ -104,7 +97,8 @@ export function createAlignmentMonitor(analyser, canvas, tc, getMetronomeState) 
     function reset() {
         ringBuffer.fill(0);
         ringIndex = 0;
-        prevMeasureStart = null;
+        pendingColumns = 0;
+        prevTimestamp = null;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
 
@@ -112,3 +106,4 @@ export function createAlignmentMonitor(analyser, canvas, tc, getMetronomeState) 
 }
 
 export { ALIGN_MEASURES };
+

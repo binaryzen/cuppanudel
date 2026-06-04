@@ -8,6 +8,8 @@ import { generateThumbnail } from './visualizers/thumbnail.js';
 import { createFrequencyAnalyzer } from './audio/frequency-analyzer.js';
 import { createTunerDisplay } from './visualizers/tuner-display.js';
 import { createTempoContext, setBeatsPerMeasure } from './timing/tempo-context.js';
+import { makeObservable } from './state/observable.js';
+import { TC_KNOB_BINDINGS } from './state/tc-bindings.js';
 import { createMetronome } from './timing/metronome.js';
 import { createMetroDisplay } from './visualizers/metro-display.js';
 import { createKnob } from './ui/knob.js';
@@ -76,31 +78,50 @@ const presetStore = createPresetStore(localStorage);
 let editConfigModal = null;
 
 // ── Tempo context + metro display (no audio dependency) ───────────────────────
-const tc          = createTempoContext();
+const tc           = makeObservable(createTempoContext());
 const metroDisplay = createMetroDisplay(tc, beatGridCanvas);
 
-const bpmKnob = createKnob(bpmKnobCanvas, 20, 500, 120, v => {
+const bpmKnob = createKnob(bpmKnobCanvas, 20, 500, tc.bpm, v => {
     tc.bpm = v;
     bpmVal.textContent = v;
     if (metronome?.isRunning()) metronome.restart();
 });
 
-const beatsKnob = createKnob(beatsKnobCanvas, 1, 18, 4, v => {
+const beatsKnob = createKnob(beatsKnobCanvas, 1, 18, tc.beatsPerMeasure, v => {
     setBeatsPerMeasure(tc, v);
     beatsVal.textContent = v;
     metroDisplay.draw(null);
     if (metronome?.isRunning()) metronome.restart();
 });
 
-const delayKnob = createKnob(delayKnobCanvas, 0, 100, 0, v => {
+const delayKnob = createKnob(delayKnobCanvas, 0, 100, tc.visualDelayMs, v => {
     tc.visualDelayMs = v;
     delayVal.textContent = v + 'ms';
 });
 
-const snapKnob = createKnob(snapKnobCanvas, 0, 5, 3, v => {
-    tc.snapThreshold = v * 0.005;   // 0–0.025 in offset space (~0–40% of a 16th note)
+const snapKnob = createKnob(snapKnobCanvas, 0, 5, Math.round(tc.snapThreshold / 0.005), v => {
+    tc.snapThreshold = v * 0.005;
     snapVal.textContent = v;
 });
+
+// ── Sync display spans from tc initial values ─────────────────────────────────
+bpmVal.textContent   = tc.bpm;
+beatsVal.textContent = tc.beatsPerMeasure;
+delayVal.textContent = tc.visualDelayMs + 'ms';
+snapVal.textContent  = Math.round(tc.snapThreshold / 0.005);
+
+// ── Knob ↔ tc bindings ────────────────────────────────────────────────────────
+// Driven by TC_KNOB_BINDINGS: add a new entry there to cover a new bound
+// property — no other wiring needed here.
+const _knobMap = {
+    bpm:             bpmKnob,
+    beatsPerMeasure: beatsKnob,
+    visualDelayMs:   delayKnob,
+    snapThreshold:   snapKnob,
+};
+TC_KNOB_BINDINGS.forEach(({ key, toKnob }) =>
+    tc.subscribe(key, v => _knobMap[key].setValue(toKnob(v)))
+);
 
 // ── Metro fullscreen toggle ───────────────────────────────────────────────────
 const BEAT_GRID_DEFAULT_W = 400;
@@ -238,7 +259,7 @@ function startRenderLoop() {
         tuner.draw();
         metroDisplay.draw(metronome ? metronome.getPlayheadPosition() : null);
         if (alignmentMonitor) {
-            alignmentMonitor.draw();
+            alignmentMonitor.draw(timestamp);
         }
         requestAnimationFrame(loop);
     }
@@ -601,22 +622,22 @@ function initGlobalWorkspace(ctx) {
             if (cfg.bpm !== undefined) {
                 const v = Number(cfg.bpm);
                 if (!isFinite(v) || v < 20 || v > 500) errors.push('bpm: must be 20–500');
-                else { tc.bpm = v; bpmKnob.setValue(v); }
+                else tc.bpm = v;
             }
             if (cfg.beatsPerMeasure !== undefined) {
                 const v = Number(cfg.beatsPerMeasure);
                 if (!Number.isInteger(v) || v < 1 || v > 18) errors.push('beatsPerMeasure: must be integer 1–18');
-                else { setBeatsPerMeasure(tc, v); beatsKnob.setValue(v); }
+                else setBeatsPerMeasure(tc, v);
             }
             if (cfg.visualDelayMs !== undefined) {
                 const v = Number(cfg.visualDelayMs);
                 if (!isFinite(v) || v < 0 || v > 100) errors.push('visualDelayMs: must be 0–100');
-                else { tc.visualDelayMs = v; delayKnob.setValue(v); }
+                else tc.visualDelayMs = v;
             }
             if (cfg.snapThreshold !== undefined) {
                 const v = Number(cfg.snapThreshold);
                 if (!isFinite(v) || v < 0 || v > 0.025) errors.push('snapThreshold: must be 0–0.025');
-                else { tc.snapThreshold = v; snapKnob.setValue(Math.round(v / 0.005)); }
+                else tc.snapThreshold = v;
             }
             if (cfg.beatOffsets !== undefined) {
                 if (!Array.isArray(cfg.beatOffsets)) errors.push('beatOffsets: must be array');
