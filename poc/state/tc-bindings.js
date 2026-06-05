@@ -38,4 +38,10 @@ export const TC_KNOB_BINDINGS = [
         fromKnob:  v => v * 0.005,
         testValue: 4,
     },
+    {
+        key:       'waveformStride',
+        toKnob:    v => v,
+        fromKnob:  v => v,
+        testValue: 3,
+    },
 ];

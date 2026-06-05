@@ -8,29 +8,54 @@
 cuppanudel/
 ├── specs/                             # planning & reference docs
 │   ├── requirements.md
-│   └── project-structure.md
+│   ├── project-structure.md
+│   ├── version-management.md          # version format, bump hook rules
+│   ├── workspace.md
+│   ├── ui-interaction-model.md
+│   └── content-service.md
+├── scripts/
+│   └── bump-version.js               # pre-commit version bump (Node.js)
 └── poc/                               # throwaway POC — ES modules, no bundler
     ├── index.html                     # single page, all UI
     ├── main.js                        # wires all modules; owns RAF loop
+    ├── version.js                     # export const VERSION = 'major.minor.build'
     ├── constants.js                   # MAX_RECORD_DURATION_MS, MAX_SAMPLES, CHUNK_SIZE_MS
     ├── audio/
     │   ├── input-provider.js          # getUserMedia → { context, source }
     │   ├── analyzer.js                # waveform AnalyserNode (fftSize 2048)
     │   ├── frequency-analyzer.js      # pitch AnalyserNode (fftSize 8192) + parabolic interp
-    │   └── recorder.js                # SPN-based recorder, dynamic + fixed modes
+    │   ├── recorder.js                # SPN-based recorder, dynamic + fixed modes
+    │   ├── builtin-click-provider.js  # synthesised hi/lo tick SampleProvider
+    │   ├── local-file-provider.js     # file-picker + drag-drop import
+    │   ├── recordings-provider.js     # exposes MediaPool clips as a SampleProvider
+    │   └── media-pool-sample-provider.js
+    ├── config/
+    │   ├── sample-provider-registry.js
+    │   ├── content-service.js
+    │   ├── preset-store.js
+    │   └── workspace.js               # export/import YAML workspace
     ├── timing/
-    │   ├── tempo-context.js           # bpm, beatsPerMeasure, beatOffsets, beatVolumes, visualDelayMs
-    │   └── metronome.js               # lookahead scheduler + synthesized click
+    │   ├── tempo-context.js           # bpm, beatsPerMeasure, beatOffsets, beatVolumes,
+    │   │                              #   visualDelayMs, audioLatencyMs, waveformStride, …
+    │   └── metronome.js               # lookahead scheduler + SampleProvider click
+    ├── state/
+    │   ├── observable.js              # makeObservable proxy + subscribe()
+    │   └── tc-bindings.js             # TC_KNOB_BINDINGS declarative table
     ├── pool/
     │   └── media-pool.js              # BufferTable + SampleClip CRUD
     ├── ui/
-    │   └── knob.js                    # canvas rotary knob, vertical-drag interaction
+    │   ├── knob.js                    # canvas rotary knob, vertical-drag interaction
+    │   ├── context-menu.js
+    │   ├── edit-config-modal.js
+    │   ├── sample-set-picker.js       # click-provider selector (inside CONTROLS section)
+    │   └── preset-bank.js             # M+/MR/M slots UI
     └── visualizers/
         ├── waveform.js                # oscilloscope canvas
         ├── peak-meter.js              # 40-segment LED bar + peak hold
         ├── tuner-display.js           # note name, cents bar, needle
         ├── thumbnail.js               # peak-envelope waveform thumbnail (generated once at save)
-        └── metro-display.js           # beat grid, draggable handles, playhead, flash
+        ├── metro-display.js           # beat grid, draggable handles, playhead, flash; composites waveform layer
+        └── alignment-monitor.js       # offscreen waveform-per-beat canvas; audio-latency corrected
 ```
 
 ### What was simplified vs original plan
@@ -41,6 +66,7 @@ cuppanudel/
 | `Waveform Sampler` | Not a separate module | `AnalyserNode` downsamples implicitly; thumbnail uses a one-shot peak-envelope pass |
 | `context/session.js` | Not built | State held in `tc`, `pool`, and local vars in `main.js`; RAF polling is sufficient |
 | `Timing Controller` | Folded into `metronome.js` | No separate controller needed at POC scale |
+| Alignment monitor as separate canvas | Composited into beat-grid canvas | Simpler DOM; offscreen canvas blitted by `metro-display.js` |
 
 ---
 

@@ -28,6 +28,7 @@ import { createSampleSetPicker } from './ui/sample-set-picker.js';
 import { createPresetStore } from './config/preset-store.js';
 import { createPresetBank } from './ui/preset-bank.js';
 import { createAlignmentMonitor } from './visualizers/alignment-monitor.js';
+import { VERSION } from './version.js';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const startBtn        = document.getElementById('start-btn');
@@ -63,6 +64,11 @@ const importDropOverlay = document.getElementById('import-drop-overlay');
 const presetBankContainer = document.getElementById('preset-bank-container');
 const exportWorkspaceBtn = document.getElementById('export-workspace-btn');
 const copyWorkspaceBtn = document.getElementById('copy-workspace-btn');
+const versionStr       = document.getElementById('version-str');
+const hamburgerBtn     = document.getElementById('hamburger-btn');
+const hamburgerMenu    = document.getElementById('hamburger-menu');
+const strideKnobCanvas = document.getElementById('stride-knob');
+const strideVal        = document.getElementById('stride-val');
 
 
 // ── App state ─────────────────────────────────────────────────────────────────
@@ -111,12 +117,19 @@ const latKnob = createKnob(latKnobCanvas, 0, 200, tc.audioLatencyMs, v => {
     latVal.textContent = v + 'ms';
 });
 
+const strideKnob = createKnob(strideKnobCanvas, 1, 8, tc.waveformStride, v => {
+    tc.waveformStride = v;
+    strideVal.textContent = v;
+});
+
 // ── Sync display spans from tc initial values ─────────────────────────────────
-bpmVal.textContent   = tc.bpm;
-beatsVal.textContent = tc.beatsPerMeasure;
-delayVal.textContent = tc.visualDelayMs + 'ms';
-snapVal.textContent  = Math.round(tc.snapThreshold / 0.005);
-latVal.textContent   = tc.audioLatencyMs + 'ms';
+bpmVal.textContent    = tc.bpm;
+beatsVal.textContent  = tc.beatsPerMeasure;
+delayVal.textContent  = tc.visualDelayMs + 'ms';
+snapVal.textContent   = Math.round(tc.snapThreshold / 0.005);
+latVal.textContent    = tc.audioLatencyMs + 'ms';
+strideVal.textContent = tc.waveformStride;
+if (versionStr) versionStr.textContent = VERSION;
 
 // ── Knob ↔ tc bindings ────────────────────────────────────────────────────────
 // Driven by TC_KNOB_BINDINGS: add a new entry there to cover a new bound
@@ -127,6 +140,7 @@ const _knobMap = {
     visualDelayMs:   delayKnob,
     snapThreshold:   snapKnob,
     audioLatencyMs:  latKnob,
+    waveformStride:  strideKnob,
 };
 TC_KNOB_BINDINGS.forEach(({ key, toKnob }) =>
     tc.subscribe(key, v => _knobMap[key].setValue(toKnob(v)))
@@ -199,8 +213,34 @@ document.getElementById('delay-dec').addEventListener('click', () => delayKnob.s
 document.getElementById('delay-inc').addEventListener('click', () => delayKnob.setValue(delayKnob.getValue() + 1));
 document.getElementById('snap-dec').addEventListener('click',  () => snapKnob.setValue(snapKnob.getValue() - 1));
 document.getElementById('snap-inc').addEventListener('click',  () => snapKnob.setValue(snapKnob.getValue() + 1));
-document.getElementById('lat-dec').addEventListener('click',   () => latKnob.setValue(latKnob.getValue() - 5));
-document.getElementById('lat-inc').addEventListener('click',   () => latKnob.setValue(latKnob.getValue() + 5));
+document.getElementById('lat-dec').addEventListener('click',    () => latKnob.setValue(latKnob.getValue() - 5));
+document.getElementById('lat-inc').addEventListener('click',    () => latKnob.setValue(latKnob.getValue() + 5));
+document.getElementById('stride-dec').addEventListener('click', () => strideKnob.setValue(strideKnob.getValue() - 1));
+document.getElementById('stride-inc').addEventListener('click', () => strideKnob.setValue(strideKnob.getValue() + 1));
+
+// ── Hamburger menu toggle ─────────────────────────────────────────────────────
+hamburgerBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    hamburgerMenu.hidden = !hamburgerMenu.hidden;
+});
+document.addEventListener('click', () => { hamburgerMenu.hidden = true; });
+
+// ── Collapsible sections ──────────────────────────────────────────────────────
+function initCollapsible(hdrId, bodyId, storageKey) {
+    const hdr  = document.getElementById(hdrId);
+    const body = document.getElementById(bodyId);
+    if (!hdr || !body) return;
+    const collapsed = localStorage.getItem(storageKey) === '1';
+    if (collapsed) { hdr.classList.add('collapsed'); body.classList.add('collapsed'); }
+    hdr.addEventListener('click', () => {
+        const isNowCollapsed = !hdr.classList.contains('collapsed');
+        hdr.classList.toggle('collapsed', isNowCollapsed);
+        body.classList.toggle('collapsed', isNowCollapsed);
+        localStorage.setItem(storageKey, isNowCollapsed ? '1' : '0');
+    });
+}
+initCollapsible('metro-controls-hdr', 'metro-controls-body', 'cn.metro.controls.collapsed');
+initCollapsible('metro-presets-hdr',  'metro-presets-body',  'cn.metro.presets.collapsed');
 
 // ── Accessor for alignment monitor state retrieval ───────────────────────────
 function getMetronomeState() {
@@ -280,11 +320,11 @@ metroBtn.addEventListener('click', () => {
     if (!metronome) return;
     if (metronome.isRunning()) {
         metronome.stop();
-        metroBtn.textContent = '▶ Start';
+        metroBtn.textContent = '▶';
         metroBtn.classList.remove('active');
     } else {
         metronome.start();
-        metroBtn.textContent = '■ Stop';
+        metroBtn.textContent = '■';
         metroBtn.classList.add('active');
     }
 });
@@ -455,15 +495,11 @@ sampleList.addEventListener('click', (e) => {
  * The context menu for the metro header is attached by initGlobalWorkspace.
  */
 function initMetroPanel() {
-    // Sample set picker: loads existing providers from registry and allows creating new ones
+    // Sample set picker: inside the collapsible CONTROLS section
     const sampleSetContainer = document.createElement('div');
     sampleSetContainer.id = 'sample-set-picker-container';
-
-    // Find beat-grid canvas and insert before it
-    const beatGrid = document.getElementById('beat-grid');
-    if (beatGrid && beatGrid.parentNode) {
-        beatGrid.parentNode.insertBefore(sampleSetContainer, beatGrid);
-    }
+    const controlsBody = document.getElementById('metro-controls-body');
+    if (controlsBody) controlsBody.appendChild(sampleSetContainer);
 
     createSampleSetPicker(
         sampleSetContainer,
