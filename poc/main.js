@@ -259,7 +259,7 @@ function startRenderLoop() {
         tuner.draw();
         metroDisplay.draw(metronome ? metronome.getPlayheadPosition() : null);
         if (alignmentMonitor) {
-            alignmentMonitor.draw(timestamp);
+            alignmentMonitor.draw(timestamp, metronome ? metronome.getPlayheadPosition() : null);
         }
         requestAnimationFrame(loop);
     }
