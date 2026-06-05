@@ -29,28 +29,35 @@ export function createAlignmentMonitor(analyser, tc, getMetronomeState) {
 
         const x = Math.min(Math.round(PAD_L + adjustedPos * usable), PAD_L + usable - 1);
 
-        // New measure: dim the previous waveform instead of clearing it
-        if (prevX !== -1 && x < prevX - 2) {
-            ctx.fillStyle = 'rgba(10, 10, 10, 0.55)';
-            ctx.fillRect(0, 0, width, height);
-        }
-        prevX = x;
-
         analyser.getFloatTimeDomainData(analyserBuffer);
         let peak = 0;
         for (let i = 0; i < analyserBuffer.length; i++) {
             peak = Math.max(peak, Math.abs(analyserBuffer[i]));
         }
-
-        ctx.clearRect(x, 0, 1, height);
-
         const barHalfH = Math.max(1, peak * mid);
+
+        // New measure: dim the previous waveform, reset so we draw only at x this frame
+        if (prevX !== -1 && x < prevX - 2) {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.55)';
+            ctx.fillRect(0, 0, width, height);
+            prevX = -1;
+        }
+
+        // Fill columns from prevX+stride to x; stride=1 gives a solid waveform
+        const stride  = Math.max(1, Math.round(tc.waveformStride || 1));
+        const startPx = prevX === -1 ? x : prevX + stride;
+
         ctx.strokeStyle = 'rgba(79, 204, 255, 0.9)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x + 0.5, mid - barHalfH);
-        ctx.lineTo(x + 0.5, mid + barHalfH);
-        ctx.stroke();
+        ctx.lineWidth   = 1;
+        for (let px = startPx; px <= x; px += stride) {
+            ctx.clearRect(px, 0, 1, height);
+            ctx.beginPath();
+            ctx.moveTo(px + 0.5, mid - barHalfH);
+            ctx.lineTo(px + 0.5, mid + barHalfH);
+            ctx.stroke();
+        }
+
+        prevX = x;
     }
 
     function reset() {

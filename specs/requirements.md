@@ -25,8 +25,10 @@ Holds canonical timing state. Mutated directly by UI controllers; read by metron
 | `beatVolumes` | `float[]` | Per-beat gain 0–1 (0 = silent, skipped entirely) |
 | `beatAccents` | `bool[]` | Per-beat accent flag; true = hi tick (index 1), false = lo tick (index 0) |
 | `visualDelayMs` | `float` | Visual playhead advance in ms to compensate display latency (0–100) |
+| `audioLatencyMs` | `float` | Microphone input latency in ms (0–200); shifts the alignment waveform left so notes played on the beat appear under the beat marker |
 | `clickProviderRef` | `string` | ID of the active `SampleProvider`; default `"built-in:default"` |
 | `snapThreshold` | `float` | Grid snap radius in normalised offset space (0.0–0.025); 0 = off |
+| `waveformStride` | `int` | Column spacing for the alignment waveform (1–8); 1 = solid fill, higher = sparser columns |
 
 `setBeatsPerMeasure(tc, n)` resets both `beatOffsets` (even spacing) and `beatVolumes` (all 1.0).
 
@@ -125,7 +127,32 @@ Canvas beat grid (400×68). Two layers:
 ## UI Components
 
 ### Knob (`ui/knob.js`)
-Canvas rotary knob. 270° sweep, 7-o'clock min to 5-o'clock max. Vertical mouse drag changes value (drag up = increase). `onChange(roundedValue)` fires on both drag and `setValue()`. Used for BPM (20–300), Beats (1–13), and Visual Delay (0–100ms). Each knob is accompanied by `−`/`+` fine-tune buttons that step by 1 unit.
+Canvas rotary knob. 270° sweep, 7-o'clock min to 5-o'clock max. Vertical mouse drag changes value (drag up = increase). `onChange(roundedValue)` fires on both drag and `setValue()`. Each knob is accompanied by `−`/`+` fine-tune buttons. Knobs in use:
+
+| Label | tc field | Range | Step |
+|---|---|---|---|
+| BPM | `bpm` | 20–500 | 1 |
+| BEATS | `beatsPerMeasure` | 1–18 | 1 |
+| VIS DLY | `visualDelayMs` | 0–100 ms | 1 |
+| SNAP | `snapThreshold` | steps 0–5 (× 0.005) | 1 step |
+| MIC LAT | `audioLatencyMs` | 0–200 ms | 5 |
+| STRIDE | `waveformStride` | 1–8 | 1 |
+
+### App Header
+
+Compact single-row header:
+- **Version label**: `cuppanudel <version>` (small, dim). Version string loaded from `poc/version.js` at startup. See `specs/version-management.md`.
+- **Start button**: initialises `AudioContext` and mic on first click.
+- **Hamburger button (≡)**: toggles a dropdown containing workspace actions (Export Workspace, Copy YAML). Closes on outside click.
+
+### Metronome Panel Controls
+
+- **Start/stop button**: icon-only (`▶` / `■`), lives in the panel header row.
+- **Collapsible CONTROLS section**: wraps the knob dials and the sample-set picker. Toggle state persisted in `localStorage` under key `cn.metro.controls.collapsed`.
+- **Collapsible PRESETS section**: wraps the preset bank (M+/MR/M slots). Toggle state persisted under `cn.metro.presets.collapsed`.
+
+### Sample Set Picker (`ui/sample-set-picker.js`)
+Rendered inside the collapsible CONTROLS section of the metro panel (not as a standalone element). Allows selecting which `SampleProvider` is used for click sounds.
 
 ---
 
@@ -186,34 +213,30 @@ RAF loop calls all visualizer `.draw()` methods each frame. Metronome runs on `s
 
 ---
 
-### Alignment Monitor (Waveform Behind Playhead)
+### Alignment Monitor (Waveform in Beat Grid)
 
-**Module**: `poc/visualizers/alignment-monitor.js` — new canvas element placed behind
-the beat-grid canvas in the DOM (beat-grid handles and grid lines remain on top).
+**Module**: `poc/visualizers/alignment-monitor.js`
 
-An additional canvas layer that shows a rolling waveform history aligned to the measure
-timeline. Goal: let the user play a sample or live performance alongside the metronome
-and visually measure timing alignment.
+An offscreen canvas layer composited into the beat-grid canvas by `metro-display.js`.
+Shows a rolling waveform trace aligned to the measure timeline so the user can visually
+judge whether notes are landing on the beat.
 
-Key requirements:
+**As built:**
 
-- **History depth**: 2 measures. The ring buffer holds exactly 2 measures of pixel columns.
-  (Make it a named constant `ALIGN_MEASURES = 2` for future tunability.)
-- **Draw mode**: continuous — the waveform scrolls left in real-time as the playhead
-  advances. No freeze-on-downbeat. The scroll position is derived from `measureStart` and
-  `nextBeatTime` (same variables the metronome scheduler uses), not from
-  `getPlayheadPosition()`, to avoid drift on BPM changes.
-- **Amplitude**: raw (`getFloatTimeDomainData()` peak per pixel column, no RMS smoothing).
-  Raw amplitude preserves transient detail needed for timing judgement.
-- X-axis mirrors the beat-grid coordinate space so transients align directly with beat
-  markers; gives an immediate visual of early / late hits.
-- Y-axis is amplitude; drawn at low opacity (≈ 0.35) so beat-grid elements remain legible.
-- Source: the shared waveform `AnalyserNode` (covers both mic and playback).
-- Data capture: ring-buffer of `Float32Array`, one entry per canvas pixel column,
-  updated each RAF frame. On each frame, compute how many columns the playhead has
-  advanced since the last frame, shift the ring buffer by that count, and fill the new
-  columns from `getFloatTimeDomainData()` peak samples.
-- The most recent measure's trace is drawn in a slightly brighter tint than older history.
+- Draws peak amplitude bars (`getFloatTimeDomainData()` peak, no RMS) as 1 px columns.
+- X-axis matches the beat-grid coordinate space (`PAD_L` / `PAD_R` from `metro-display.js`).
+  X position is derived from `getPlayheadPosition()` normalized 0–1 within the measure.
+- **Audio latency correction**: `audioLatencyMs` is subtracted from the playhead fraction
+  so that a note played on the beat appears under the beat marker despite microphone delay.
+  Formula: `adjustedPos = ((pos - latFrac) % 1 + 1) % 1`.
+- **Column density**: `waveformStride` (1–8) controls spacing. Stride 1 fills every pixel
+  between `prevX` and the current `x` each frame → solid waveform. Higher stride = sparser.
+- **Ghost measure**: on downbeat wrap (`x < prevX − 2`), fills the offscreen canvas with
+  `rgba(10,10,10,0.55)` (dims the previous measure) rather than clearing.
+- **Freeze on stop**: when metronome is not running, `draw()` returns without clearing,
+  preserving the last frame for post-performance inspection.
+- Composited by `metro-display.js` via `ctx.drawImage(waveformLayer, ...)` before
+  reference grid and beat handles are drawn.
 
 ---
 
