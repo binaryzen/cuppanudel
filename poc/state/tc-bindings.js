@@ -27,6 +27,12 @@ export const TC_KNOB_BINDINGS = [
         testValue: 50,
     },
     {
+        key:       'audioLatencyMs',
+        toKnob:    v => v,
+        fromKnob:  v => v,
+        testValue: 100,
+    },
+    {
         key:       'snapThreshold',
         toKnob:    v => Math.round(v / 0.005),
         fromKnob:  v => v * 0.005,
