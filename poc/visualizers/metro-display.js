@@ -1,5 +1,5 @@
-const PAD_L    = 10;
-const PAD_R    = 10;
+export const PAD_L = 10;
+export const PAD_R = 10;
 const MIN_GAP  = 0.025;
 const FLASH_MS = 200;
 
@@ -11,6 +11,7 @@ const C_SIXTEENTH = 'rgba(80,150,220,0.45)';
 
 export function createMetroDisplay(tc, canvas) {
     const ctx = canvas.getContext('2d');
+    let waveformLayer = null;
 
     let dragging     = null;   // beat index being dragged, or null
     let lastPlayhead = null;
@@ -275,6 +276,11 @@ export function createMetroDisplay(tc, canvas) {
         prevPlayhead = playheadPos;
 
         ctx.clearRect(0, 0, W, H);
+
+        if (waveformLayer) {
+            ctx.drawImage(waveformLayer, 0, 0, W, H);
+        }
+
         drawReferenceGrid(geom);
 
         // timeline bar
@@ -368,7 +374,11 @@ export function createMetroDisplay(tc, canvas) {
         drawInternal(playheadPos);
     }
 
+    function setWaveformLayer(canvas) {
+        waveformLayer = canvas;
+    }
+
     draw(null);
 
-    return { draw };
+    return { draw, setWaveformLayer };
 }

@@ -1,64 +1,64 @@
-// Alignment Monitor Visualizer
-// Draws peak amplitude as a vertical bar directly under the metronome playhead.
-// The waveform fills left-to-right as the measure progresses; canvas clears on
-// each new measure so the display always reflects the current pass.
+import { PAD_L, PAD_R } from './metro-display.js';
 
-export function createAlignmentMonitor(analyser, canvas, tc, getMetronomeState) {
-    const ctx = canvas.getContext('2d');
+export function createAlignmentMonitor(analyser, tc, getMetronomeState) {
+    const offscreen = document.createElement('canvas');
+    offscreen.width  = 400;
+    offscreen.height = 68;
+    const ctx = offscreen.getContext('2d');
     const analyserBuffer = new Float32Array(analyser.fftSize);
 
     let prevX = -1;
 
     function draw(timestamp, playheadPos) {
-        const state = getMetronomeState();
-        const width  = canvas.width;
-        const height = canvas.height;
+        const state  = getMetronomeState();
+        const width  = offscreen.width;
+        const height = offscreen.height;
         const mid    = height / 2;
 
         if (!state.isRunning || playheadPos === null) {
-            ctx.clearRect(0, 0, width, height);
-            prevX = -1;
-            return;
+            return; // freeze last frame when stopped
         }
 
-        const x = Math.min(Math.floor(playheadPos * width), width - 1);
+        const usable = width - PAD_L - PAD_R;
+        const x = Math.min(Math.round(PAD_L + playheadPos * usable), PAD_L + usable - 1);
 
-        // New measure started: clear and begin fresh
+        // New measure: dim the previous waveform instead of clearing it
         if (prevX !== -1 && x < prevX - 2) {
-            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.55)';
+            ctx.fillRect(0, 0, width, height);
         }
         prevX = x;
 
-        // Sample peak amplitude from the shared analyser
         analyser.getFloatTimeDomainData(analyserBuffer);
         let peak = 0;
         for (let i = 0; i < analyserBuffer.length; i++) {
             peak = Math.max(peak, Math.abs(analyserBuffer[i]));
         }
 
-        // Erase this column then draw so the current pass overwrites the old one
         ctx.clearRect(x, 0, 1, height);
 
-        // Always draw a dim center tick — confirms the canvas is active
-        ctx.fillStyle = 'rgba(79, 204, 255, 0.15)';
-        ctx.fillRect(x, mid - 1, 1, 2);
-
-        // Amplitude bar (no threshold: silent audio draws a 1px center dot)
-        const y1 = mid - peak * mid;
-        const y2 = mid + peak * mid;
-        ctx.strokeStyle = 'rgba(79, 204, 255, 0.8)';
+        const barHalfH = Math.max(1, peak * mid);
+        ctx.strokeStyle = 'rgba(79, 204, 255, 0.9)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(x, y1);
-        ctx.lineTo(x, y2);
+        ctx.moveTo(x + 0.5, mid - barHalfH);
+        ctx.lineTo(x + 0.5, mid + barHalfH);
         ctx.stroke();
     }
 
     function reset() {
         prevX = -1;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, offscreen.width, offscreen.height);
     }
 
-    return { draw, reset };
-}
+    function resize(w, h) {
+        if (offscreen.width === w && offscreen.height === h) return;
+        offscreen.width  = w;
+        offscreen.height = h;
+        prevX = -1;
+    }
 
+    function getCanvas() { return offscreen; }
+
+    return { draw, reset, resize, getCanvas };
+}
