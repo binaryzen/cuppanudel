@@ -298,6 +298,36 @@ Resolves open question: *"Persist session settings across page loads?"* (metrono
 
 ---
 
+### UI Chrome
+
+**Version label** (`poc/version.js`)
+
+A single `export const VERSION = 'major.minor.build'` string displayed in the app header
+as a small, dim label (`cuppanudel 0.1.x`). Build number auto-incremented by git pre-commit
+hook (see `specs/version-management.md`). Major and minor managed explicitly by developers.
+
+**Hamburger menu**
+
+Workspace controls (Export Workspace, Copy YAML) tucked behind a `≡` button in the header.
+Dropdown closes on click-outside. Keeps the header compact — the workspace operations are
+occasional, not primary UI.
+
+**Collapsible metro sections**
+
+Two independently collapsible sections in the metro panel:
+- **CONTROLS** (`#metro-controls-body`): knob dials (BPM, BEATS, VIS DELAY, SNAP, MIC LAT,
+  STRIDE) and the click-sound sample set picker.
+- **PRESETS** (`#metro-presets-body`): preset bank (M+/MR/M−, M0–M7 slots).
+
+Each section has a `▾`/`▸` toggle button. Collapsed state persists in `localStorage`
+under keys `cn.metro.controls.collapsed` and `cn.metro.presets.collapsed`.
+
+**Metro start/stop button**
+
+Icon-only (`▶`/`■`) in the panel header, no text label. Active state styled `.active`.
+
+---
+
 ## Open Questions
 
 - [x] **File input: audio file playback** → addressed in Planned Features above
