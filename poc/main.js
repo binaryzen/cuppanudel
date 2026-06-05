@@ -226,21 +226,22 @@ hamburgerBtn.addEventListener('click', (e) => {
 document.addEventListener('click', () => { hamburgerMenu.hidden = true; });
 
 // ── Collapsible sections ──────────────────────────────────────────────────────
-function initCollapsible(hdrId, bodyId, storageKey) {
-    const hdr  = document.getElementById(hdrId);
+function initCollapsible(toggleBtnId, bodyId, storageKey) {
+    const btn  = document.getElementById(toggleBtnId);
     const body = document.getElementById(bodyId);
-    if (!hdr || !body) return;
+    if (!btn || !body) return;
     const collapsed = localStorage.getItem(storageKey) === '1';
-    if (collapsed) { hdr.classList.add('collapsed'); body.classList.add('collapsed'); }
-    hdr.addEventListener('click', () => {
-        const isNowCollapsed = !hdr.classList.contains('collapsed');
-        hdr.classList.toggle('collapsed', isNowCollapsed);
+    if (collapsed) { body.classList.add('collapsed'); btn.textContent = '▸'; }
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isNowCollapsed = !body.classList.contains('collapsed');
         body.classList.toggle('collapsed', isNowCollapsed);
+        btn.textContent = isNowCollapsed ? '▸' : '▾';
         localStorage.setItem(storageKey, isNowCollapsed ? '1' : '0');
     });
 }
-initCollapsible('metro-controls-hdr', 'metro-controls-body', 'cn.metro.controls.collapsed');
-initCollapsible('metro-presets-hdr',  'metro-presets-body',  'cn.metro.presets.collapsed');
+initCollapsible('metro-controls-toggle', 'metro-controls-body', 'cn.metro.controls.collapsed');
+initCollapsible('metro-presets-toggle',  'metro-presets-body',  'cn.metro.presets.collapsed');
 
 // ── Accessor for alignment monitor state retrieval ───────────────────────────
 function getMetronomeState() {
