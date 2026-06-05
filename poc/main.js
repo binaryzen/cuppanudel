@@ -61,7 +61,7 @@ const importDropOverlay = document.getElementById('import-drop-overlay');
 const presetBankContainer = document.getElementById('preset-bank-container');
 const exportWorkspaceBtn = document.getElementById('export-workspace-btn');
 const copyWorkspaceBtn = document.getElementById('copy-workspace-btn');
-const alignmentMonitorCanvas = document.getElementById('alignment-monitor');
+
 
 // ── App state ─────────────────────────────────────────────────────────────────
 let context      = null;
@@ -130,12 +130,14 @@ const BEAT_GRID_DEFAULT_H = 68;
 function resizeBeatGridFullscreen() {
     beatGridCanvas.width  = window.innerWidth - 32;
     beatGridCanvas.height = Math.floor(window.innerHeight * 0.55);
+    alignmentMonitor?.resize(beatGridCanvas.width, beatGridCanvas.height);
     metroDisplay.draw(null);
 }
 
 function resizeBeatGridDefault() {
     beatGridCanvas.width  = BEAT_GRID_DEFAULT_W;
     beatGridCanvas.height = BEAT_GRID_DEFAULT_H;
+    alignmentMonitor?.resize(beatGridCanvas.width, beatGridCanvas.height);
     metroDisplay.draw(null);
 }
 
@@ -225,12 +227,9 @@ startBtn.addEventListener('click', async () => {
         // 4. Create metronome with 3-arg form: context, tc, clickProvider
         metronome = createMetronome(context, tc, builtinClickProvider);
 
-        // 5. Create alignment monitor (guard against missing canvas)
-        if (!alignmentMonitorCanvas) {
-            console.error('main.js: alignment-monitor canvas not found — check index.html');
-        } else {
-            alignmentMonitor = createAlignmentMonitor(analyserNode, alignmentMonitorCanvas, tc, getMetronomeState);
-        }
+        // 5. Create alignment monitor (draws into its own offscreen canvas, blitted by metroDisplay)
+        alignmentMonitor = createAlignmentMonitor(analyserNode, tc, getMetronomeState);
+        metroDisplay.setWaveformLayer(alignmentMonitor.getCanvas());
 
         // 6. Initialize metro panel UI (sample set picker, preset bank)
         initMetroPanel();
@@ -257,10 +256,9 @@ function startRenderLoop() {
         waveform.draw();
         peakMeter.draw(timestamp);
         tuner.draw();
-        metroDisplay.draw(metronome ? metronome.getPlayheadPosition() : null);
-        if (alignmentMonitor) {
-            alignmentMonitor.draw(timestamp, metronome ? metronome.getPlayheadPosition() : null);
-        }
+        const playheadPos = metronome ? metronome.getPlayheadPosition() : null;
+        alignmentMonitor?.draw(timestamp, playheadPos);
+        metroDisplay.draw(playheadPos);
         requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
