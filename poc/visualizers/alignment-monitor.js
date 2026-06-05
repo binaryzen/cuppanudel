@@ -38,16 +38,20 @@ export function createAlignmentMonitor(analyser, canvas, tc, getMetronomeState) 
 
         // Erase this column then draw so the current pass overwrites the old one
         ctx.clearRect(x, 0, 1, height);
-        if (peak > 0.001) {
-            const y1 = mid - peak * mid;
-            const y2 = mid + peak * mid;
-            ctx.strokeStyle = 'rgba(79, 204, 255, 0.75)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(x, y1);
-            ctx.lineTo(x, y2);
-            ctx.stroke();
-        }
+
+        // Always draw a dim center tick — confirms the canvas is active
+        ctx.fillStyle = 'rgba(79, 204, 255, 0.15)';
+        ctx.fillRect(x, mid - 1, 1, 2);
+
+        // Amplitude bar (no threshold: silent audio draws a 1px center dot)
+        const y1 = mid - peak * mid;
+        const y2 = mid + peak * mid;
+        ctx.strokeStyle = 'rgba(79, 204, 255, 0.8)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, y1);
+        ctx.lineTo(x, y2);
+        ctx.stroke();
     }
 
     function reset() {
