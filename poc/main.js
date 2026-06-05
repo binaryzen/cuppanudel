@@ -44,6 +44,8 @@ const beatsKnobCanvas = document.getElementById('beats-knob');
 const delayKnobCanvas = document.getElementById('delay-knob');
 const snapKnobCanvas  = document.getElementById('snap-knob');
 const snapVal         = document.getElementById('snap-val');
+const latKnobCanvas   = document.getElementById('lat-knob');
+const latVal          = document.getElementById('lat-val');
 const recordBtn     = document.getElementById('record-btn');
 const recStatus     = document.getElementById('rec-status');
 const ringControls  = document.getElementById('ring-controls');
@@ -104,11 +106,17 @@ const snapKnob = createKnob(snapKnobCanvas, 0, 5, Math.round(tc.snapThreshold / 
     snapVal.textContent = v;
 });
 
+const latKnob = createKnob(latKnobCanvas, 0, 200, tc.audioLatencyMs, v => {
+    tc.audioLatencyMs = v;
+    latVal.textContent = v + 'ms';
+});
+
 // ── Sync display spans from tc initial values ─────────────────────────────────
 bpmVal.textContent   = tc.bpm;
 beatsVal.textContent = tc.beatsPerMeasure;
 delayVal.textContent = tc.visualDelayMs + 'ms';
 snapVal.textContent  = Math.round(tc.snapThreshold / 0.005);
+latVal.textContent   = tc.audioLatencyMs + 'ms';
 
 // ── Knob ↔ tc bindings ────────────────────────────────────────────────────────
 // Driven by TC_KNOB_BINDINGS: add a new entry there to cover a new bound
@@ -118,6 +126,7 @@ const _knobMap = {
     beatsPerMeasure: beatsKnob,
     visualDelayMs:   delayKnob,
     snapThreshold:   snapKnob,
+    audioLatencyMs:  latKnob,
 };
 TC_KNOB_BINDINGS.forEach(({ key, toKnob }) =>
     tc.subscribe(key, v => _knobMap[key].setValue(toKnob(v)))
@@ -190,6 +199,8 @@ document.getElementById('delay-dec').addEventListener('click', () => delayKnob.s
 document.getElementById('delay-inc').addEventListener('click', () => delayKnob.setValue(delayKnob.getValue() + 1));
 document.getElementById('snap-dec').addEventListener('click',  () => snapKnob.setValue(snapKnob.getValue() - 1));
 document.getElementById('snap-inc').addEventListener('click',  () => snapKnob.setValue(snapKnob.getValue() + 1));
+document.getElementById('lat-dec').addEventListener('click',   () => latKnob.setValue(latKnob.getValue() - 5));
+document.getElementById('lat-inc').addEventListener('click',   () => latKnob.setValue(latKnob.getValue() + 5));
 
 // ── Accessor for alignment monitor state retrieval ───────────────────────────
 function getMetronomeState() {

@@ -20,7 +20,14 @@ export function createAlignmentMonitor(analyser, tc, getMetronomeState) {
         }
 
         const usable = width - PAD_L - PAD_R;
-        const x = Math.min(Math.round(PAD_L + playheadPos * usable), PAD_L + usable - 1);
+
+        // Shift the plotted position left by audioLatencyMs so a note played on
+        // the beat appears under the beat marker despite microphone input delay.
+        const measDurSec   = tc.beatsPerMeasure / tc.bpm * 60;
+        const latFrac      = (tc.audioLatencyMs || 0) / 1000 / measDurSec;
+        const adjustedPos  = ((playheadPos - latFrac) % 1 + 1) % 1;
+
+        const x = Math.min(Math.round(PAD_L + adjustedPos * usable), PAD_L + usable - 1);
 
         // New measure: dim the previous waveform instead of clearing it
         if (prevX !== -1 && x < prevX - 2) {
