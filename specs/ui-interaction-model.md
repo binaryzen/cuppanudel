@@ -150,6 +150,66 @@ focus-management simplicity. Only one overlay of each type can be visible at a t
 
 ---
 
+## CSS View-State Convention
+
+View state and visual appearance must be cleanly separated. CSS that controls what
+something *looks like* and CSS that controls whether it is *shown or hidden* should
+never fight each other through cascade or specificity.
+
+**Rule: view state is owned exclusively by explicit state classes. Visual rules
+compose on top of them. No other mechanism controls dynamic state.**
+
+### State Classes
+
+Every dynamic view state gets a dedicated, purposeful class on the affected element:
+
+| Class | Meaning | Typical element |
+|-------|---------|-----------------|
+| `.open` | Visible / shown | Dropdown menus, overlays |
+| `.collapsed` | Body hidden, header still present | Collapsible section bodies |
+| `.active` | Currently engaged / running | Metro button while metronome runs |
+| `.playing` | Audio playback in progress | Sample play button |
+| `.armed` | Awaiting a follow-up user action | Preset save/delete mode button |
+| `.awaiting` | Pending slot selection | Preset slot in save mode |
+| `.has-preset` | Slot is occupied | Preset slot LED indicator |
+
+### Composition Pattern
+
+The CSS default is always the *resting / hidden* state. The state class switches it on:
+
+```css
+/* ✓ Correct: default off, class switches on */
+.menu { display: none; /* flex-direction, min-width, etc. still declared here */ }
+.menu.open { display: flex; }
+
+/* ✗ Wrong: HTML attribute fights UA stylesheet */
+.menu { display: flex; }      /* silently overrides [hidden] { display: none } */
+```
+
+State classes are applied and removed exclusively via `classList.add/remove/toggle` in
+JavaScript. `element.hidden`, `element.style.display`, and attribute manipulation are
+**not used** for view-state purposes.
+
+### Why Not HTML Attributes
+
+HTML boolean attributes (`hidden`, `disabled`, `checked`) look like view-state tools
+but create CSS specificity problems:
+
+| Attribute | Problem |
+|-----------|---------|
+| `[hidden]` | UA stylesheet sets `display: none` *without* `!important`; any author `display:` property silently overrides it, making the element visible even when `hidden` is set |
+| `[disabled]` | Same specificity trap for visual changes; fine for native form behaviour, not as a styling hook |
+| `:checked`, `:focus-within`, `:has()` | Reflect browser-managed state, not application view state — use these for styling only, never to communicate state back to JS |
+
+### Inheritance and Cascade Are Not View State
+
+A child element's visibility must not depend on inheriting a property from a parent or
+on the cascade resolving in a particular order. Each collapsible body, each dropdown,
+each overlay declares its own display default and responds to its own state class.
+This makes the element's rendered state fully predictable from its class list alone.
+
+---
+
 ## Relationship to Fullscreen Mode
 
 The expanded overlay and the fullscreen panel are orthogonal features. When the metro
