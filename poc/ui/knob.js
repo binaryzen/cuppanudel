@@ -166,11 +166,11 @@ export function createKnob(canvas, min, max, initial, onChange) {
             ctx.stroke();
         }
 
-        // pointer dot
+        // pointer dot — white so it's visible at any position including minimum
         const angle = START_ANGLE + norm * SWEEP;
         ctx.beginPath();
-        ctx.arc(cx + Math.cos(angle) * r * 0.65, cy + Math.sin(angle) * r * 0.65, 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = '#4fc';
+        ctx.arc(cx + Math.cos(angle) * r * 0.65, cy + Math.sin(angle) * r * 0.65, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#eee';
         ctx.fill();
     }
 
