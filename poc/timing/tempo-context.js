@@ -9,6 +9,7 @@ export function createTempoContext() {
         audioLatencyMs:  0,
         clickProviderRef: 'built-in:default',   // SampleProvider id
         snapThreshold:   3 * 0.005,             // float, 0.0–0.025; default = step 3
+        waveformStride:  1,                     // int 1–8; 1 = solid fill, higher = sparser columns
     };
 }
 
