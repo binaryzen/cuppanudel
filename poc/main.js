@@ -218,12 +218,26 @@ document.getElementById('lat-inc').addEventListener('click',    () => latKnob.se
 document.getElementById('stride-dec').addEventListener('click', () => strideKnob.setValue(strideKnob.getValue() - 1));
 document.getElementById('stride-inc').addEventListener('click', () => strideKnob.setValue(strideKnob.getValue() + 1));
 
+// ── Screen wake lock (prevent device standby while app is running) ────────────
+let _wakeLock = null;
+async function _acquireWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+        _wakeLock = await navigator.wakeLock.request('screen');
+        _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+    } catch (_) {}
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') _acquireWakeLock();
+});
+_acquireWakeLock();
+
 // ── Hamburger menu toggle ─────────────────────────────────────────────────────
 hamburgerBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    hamburgerMenu.hidden = !hamburgerMenu.hidden;
+    hamburgerMenu.classList.toggle('open');
 });
-document.addEventListener('click', () => { hamburgerMenu.hidden = true; });
+document.addEventListener('click', () => { hamburgerMenu.classList.remove('open'); });
 
 // ── Collapsible sections ──────────────────────────────────────────────────────
 function initCollapsible(toggleBtnId, bodyId, storageKey) {
@@ -340,7 +354,8 @@ recModeRadios.forEach(radio => {
 
 // ── Ring duration slider ──────────────────────────────────────────────────────
 ringDuration.addEventListener('input', () => {
-    ringDurLabel.textContent = ringDuration.value + 'ms';
+    const bars = parseInt(ringDuration.value, 10);
+    ringDurLabel.textContent = bars === 1 ? '1 bar' : bars + ' bars';
 });
 
 // ── Record button ─────────────────────────────────────────────────────────────
@@ -348,9 +363,10 @@ recordBtn.addEventListener('click', () => {
     if (!recorder) return;
 
     if (!recorder.isRecording()) {
-        const mode = document.querySelector('input[name="rec-mode"]:checked').value;
-        const durationMs  = parseInt(ringDuration.value, 10);
-        const durationSec = durationMs / 1000;
+        const mode    = document.querySelector('input[name="rec-mode"]:checked').value;
+        const bars    = parseInt(ringDuration.value, 10);
+        const measSec = tc.beatsPerMeasure / tc.bpm * 60;
+        const durationSec = bars * measSec;
 
         recorder.start(mode, durationSec, () => {
             // fixed buffer full — auto stop
@@ -359,7 +375,7 @@ recordBtn.addEventListener('click', () => {
 
         recordBtn.textContent = 'Stop';
         recordBtn.classList.add('active');
-        recStatus.textContent = mode === 'fixed' ? `max ${durationMs}ms` : 'recording…';
+        recStatus.textContent = mode === 'fixed' ? `max ${bars} bar${bars !== 1 ? 's' : ''}` : 'recording…';
         setControlsDisabled(true);
     } else {
         finishRecording();
