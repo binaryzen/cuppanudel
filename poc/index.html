@@ -328,6 +328,35 @@
             background: #4fc;
             box-shadow: 0 0 5px #4fc;
         }
+
+        /* ── sampler panel ── */
+        .sampler-panel { display: flex; flex-direction: column; gap: 0.75rem; }
+        .live-buffer-strip { width: 100%; height: 40px; background: #0a0a0a; border: 1px solid #222; display: block; }
+        .capture-btns { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+        .capture-btns button { min-height: 44px; padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+        .snap-btn:disabled { opacity: 0.35; }
+        .punch-btn.active { background: #440; border-color: #cc8; color: #ffc; }
+        .sampler-controls { display: flex; gap: 0.5rem; }
+        .sampler-list { list-style: none; display: flex; flex-direction: column; gap: 0.4rem; max-height: 280px; overflow-y: auto; }
+        .sampler-list li { display: flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.5rem; background: #1a1a1a; border: 1px solid #2a2a2a; flex-wrap: wrap; }
+        .loop-badge { font-size: 0.7rem; color: #4fc; min-width: 4ch; }
+        .bpm-warn   { color: #fa8; font-size: 0.7rem; }
+        .drag-over  { outline: 2px solid #4fc; }
+        .set-header { color: #555; font-size: 0.7rem; letter-spacing: 0.1em; padding: 0.2rem 0.5rem; list-style: none; }
+        .sampler-status { font-size: 0.75rem; color: #888; min-height: 1.1em; padding: 0 0.1rem; }
+        .sampler-status.error { color: #f88; }
+        #import-drop-overlay { display: none; }
+        #import-drop-overlay.visible { display: block; position: absolute; inset: 0; background: rgba(79,204,255,0.08); pointer-events: none; }
+        /* ── trim panel ── */
+        .trim-panel { display: none; flex-direction: column; gap: 0.5rem; padding: 0.75rem; border: 1px solid #333; margin-top: 0.5rem; }
+        .trim-panel.open { display: flex; }
+        .trim-header { display: flex; align-items: center; gap: 0.5rem; }
+        .trim-title  { flex: 1; font-size: 0.8rem; color: #888; }
+        .trim-waveform { width: 100%; height: 80px; background: #0a0a0a; border: 1px solid #222; display: block; }
+        .trim-controls { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; color: #888; }
+        .trim-controls label { display: flex; align-items: center; gap: 0.5rem; }
+        .trim-controls input[type=range] { flex: 1; }
+        .trim-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
     </style>
 </head>
 <body>
@@ -452,32 +481,36 @@
     </section>
 
     <section id="sample-browser-panel">
-        <h2>SAMPLE BROWSER</h2>
-
-        <div class="row">
-            <label><input type="radio" name="rec-mode" value="dynamic" checked> Dynamic</label>
-            <label><input type="radio" name="rec-mode" value="fixed"> Fixed</label>
+        <div class="panel-header">
+            <h2>SAMPLER</h2>
+            <button class="collapse-btn" id="sampler-toggle">▾</button>
         </div>
-
-        <div id="ring-controls" class="hidden">
-            <label class="dim">LEN</label>
-            <input type="range" id="ring-duration" min="1" max="32" step="1" value="4">
-            <span id="ring-duration-label" style="min-width:5ch">4 bars</span>
+        <div class="collapsible-body" id="sampler-body">
+            <div id="sampler-mount"></div>
+            <div id="trim-mount"></div>
+            <details>
+                <summary style="color:#666;font-size:0.8rem;cursor:pointer;padding:0.3rem 0">▸ Record</summary>
+                <div style="display:flex;flex-direction:column;gap:0.5rem;padding:0.5rem 0">
+                    <div class="row">
+                        <label><input type="radio" name="rec-mode" value="dynamic" checked> Dynamic</label>
+                        <label><input type="radio" name="rec-mode" value="fixed"> Fixed</label>
+                    </div>
+                    <div id="ring-controls" class="hidden">
+                        <label class="dim">LEN</label>
+                        <input type="range" id="ring-duration" min="1" max="32" step="1" value="4">
+                        <span id="ring-duration-label" style="min-width:5ch">4 bars</span>
+                    </div>
+                    <div class="row">
+                        <button id="record-btn" disabled>Record</button>
+                        <span id="rec-status" style="color:#666;font-size:0.8rem"></span>
+                    </div>
+                    <button id="import-file-btn">Import File</button>
+                    <input type="file" id="import-file-input" accept="audio/*" multiple style="display:none">
+                    <div id="import-drop-overlay"></div>
+                    <ul id="sample-list"><li id="empty-msg">No samples</li></ul>
+                </div>
+            </details>
         </div>
-
-        <div class="row">
-            <button id="record-btn" disabled>Record</button>
-            <span id="rec-status" style="color:#666; font-size:0.8rem"></span>
-        </div>
-
-        <!-- File import UI (lane-d) -->
-        <input type="file" id="import-file-input" accept="audio/*" multiple style="display:none">
-        <button id="import-file-btn">Import File</button>
-        <div id="import-drop-overlay" hidden></div>
-
-        <ul id="sample-list">
-            <li id="empty-msg">No samples</li>
-        </ul>
     </section>
 
     <script src="lib/js-yaml.min.js"></script>
