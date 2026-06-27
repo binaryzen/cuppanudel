@@ -474,33 +474,27 @@ is unavailable.
 
 ---
 
+## Decisions
+
+| Decision | Resolution |
+|----------|-----------|
+| **Live buffer sources** | Mic input only. Playback audio is not mixed into the live buffer — doing so risks feedback loops and complicates the audio graph. The user captures their own performance, not "what the session sounded like." |
+| **Live buffer size** | Fixed at `LIVE_BUFFER_MEASURES = 16`. No UI control. A session-level config editor is a planned future component; `LIVE_BUFFER_MEASURES` is a candidate setting for it when that ships. |
+| **Time-stretching** | Deferred. The BPM mismatch warning remains the POC behaviour. Time-stretching (pitch-preserving, phase-vocoder or similar) is a desirable later feature exposed as a per-sample toggle, implemented as an `AudioWorklet`. The spec and `loopMode` schema should accommodate it without structural change: add `'stretch'` as a future `loopMode` value. |
+| **Undo/redo** | Trim operations use the **command pattern**: every mutating operation (move trim handle, set fade, crop) is an object with `execute()` and `undo()` methods pushed onto a per-panel history stack. The UI exposes Undo / Redo buttons (and Ctrl-Z / Ctrl-Shift-Z). History is scoped to the current trim panel session; it does not persist across page reloads. |
+
+---
+
 ## Open Questions
-
-- [ ] **Live buffer sources**: Should the live buffer record only the mic,
-  or also the looped-back sample audio? Recording the mix would let the user
-  capture "what the session sounded like" including their practice loop, but
-  risks feedback loops and doubles the complexity.
-
-- [ ] **Live buffer size setting**: Should `LIVE_BUFFER_MEASURES` be
-  user-configurable in the UI, or fixed? A setting adds complexity; the
-  default of 16 may be enough. Minimum useful is 4 measures.
 
 - [ ] **Multi-channel**: All audio in the POC is mono (single mic channel).
   Stereo import is downmixed to mono at `decodeAudioData`. Spec leaves
   multi-channel as out of scope.
 
-- [ ] **Time-stretching for sync loop**: Currently, BPM mismatch ≠ timestretch.
-  A `AudioWorklet`-based pitch-preserving stretcher (e.g., phase-vocoder)
-  would eliminate the mismatch warning but is complex. Defer to `app/`.
-
 - [ ] **Trim handle interaction on touch**: Drag handles on a touch screen
   require careful hit-target sizing (≥ 22 px radius). The trim canvas needs
   the same visual-radius / hit-radius separation described in
   `specs/ui-interaction-model.md` for beat handles.
-
-- [ ] **Undo/redo for trim operations**: Should trim edits be reversible with
-  Ctrl-Z? The Discard button covers a single editing session, but not
-  across sessions or after Crop.
 
 - [ ] **Concurrent playback**: Can multiple samples play simultaneously (e.g.,
   a looping riff sample while the user monitors mic input)? Current
