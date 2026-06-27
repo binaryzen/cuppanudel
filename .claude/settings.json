@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "Bash(git merge-base *)",
+      "mcp__github__list_pull_requests"
+    ]
+  }
+}
