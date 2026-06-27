@@ -482,30 +482,14 @@ is unavailable.
 | **Live buffer size** | Fixed at `LIVE_BUFFER_MEASURES = 16`. No UI control. A session-level config editor is a planned future component; `LIVE_BUFFER_MEASURES` is a candidate setting for it when that ships. |
 | **Time-stretching** | Deferred. The BPM mismatch warning remains the POC behaviour. Time-stretching (pitch-preserving, phase-vocoder or similar) is a desirable later feature exposed as a per-sample toggle, implemented as an `AudioWorklet`. The spec and `loopMode` schema should accommodate it without structural change: add `'stretch'` as a future `loopMode` value. |
 | **Undo/redo** | Trim operations use the **command pattern**: every mutating operation (move trim handle, set fade, crop) is an object with `execute()` and `undo()` methods pushed onto a per-panel history stack. The UI exposes Undo / Redo buttons (and Ctrl-Z / Ctrl-Shift-Z). History is scoped to the current trim panel session; it does not persist across page reloads. |
+| **Multi-channel** | Single channel (mono) throughout. Stereo imports are downmixed to mono at `decodeAudioData`. Multi-channel is out of scope indefinitely. |
+| **Drag handle hit targets** | Canvas controls with small visual indicators (trim handles, loop markers) must separate visual radius from hit radius, identical to the pattern specified for beat handles in `specs/ui-interaction-model.md`. This separation must be encapsulated so it applies consistently to every canvas drag control across the app — not re-implemented per component. A shared `createDragHandle({ x, y, visualRadius, hitRadius, ... })` utility or equivalent is the target shape. |
+| **Concurrent playback** | Multiple samples may play simultaneously. `MediaPool` already supports concurrent `AudioBufferSourceNode` instances; no architectural change required. |
+| **Name collision on import** | Always create a new sample — never overwrite. Label deduplication: strip any trailing ` (N)` suffix from the candidate label, collect all existing labels that match `base` or `base (N)`, find the highest N among them (0 if none), and append ` (N+1)`. Examples: `"riff"` → `"riff (2)"` → `"riff (3)"`, not `"riff (2) (2)"`. |
+| **Export ZIP** | Use the Compression Streams API (`CompressionStream('deflate-raw')` + manual ZIP structure). No external library. Target: Chrome 80+, Firefox 113+, Safari 17.2+. Older browsers fall back to individual per-file WAV downloads with an in-UI notice. |
 
 ---
 
 ## Open Questions
 
-- [ ] **Multi-channel**: All audio in the POC is mono (single mic channel).
-  Stereo import is downmixed to mono at `decodeAudioData`. Spec leaves
-  multi-channel as out of scope.
-
-- [ ] **Trim handle interaction on touch**: Drag handles on a touch screen
-  require careful hit-target sizing (≥ 22 px radius). The trim canvas needs
-  the same visual-radius / hit-radius separation described in
-  `specs/ui-interaction-model.md` for beat handles.
-
-- [ ] **Concurrent playback**: Can multiple samples play simultaneously (e.g.,
-  a looping riff sample while the user monitors mic input)? Current
-  `MediaPool` supports concurrent playback. No spec change needed; call it
-  explicitly supported.
-
-- [ ] **Name collision on import**: If a WAV is imported twice, should it create
-  two samples or replace the first? Current preference: always create a new
-  sample (append "(2)" to label). Destruction of the original sample is never
-  implicit.
-
-- [ ] **Export ZIP**: Browser Zip encoding requires either a library or the
-  Compression Streams API (available in Chrome 80+, Firefox 113+). Verify
-  target browser support before implementing.
+_(none outstanding)_
