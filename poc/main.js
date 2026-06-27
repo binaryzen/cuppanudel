@@ -29,6 +29,10 @@ import { createPresetStore } from './config/preset-store.js';
 import { createPresetBank } from './ui/preset-bank.js';
 import { createAlignmentMonitor } from './visualizers/alignment-monitor.js';
 import { VERSION } from './version.js';
+import { createLiveBuffer }     from './audio/live-buffer.js';
+import { createCaptureManager } from './audio/capture.js';
+import { createSamplerPanel }   from './ui/sampler-panel.js';
+import { createTrimPanel }      from './ui/trim-panel.js';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const startBtn        = document.getElementById('start-btn');
@@ -80,6 +84,11 @@ let peakMeter    = null;
 let tuner        = null;
 let metronome    = null;
 let alignmentMonitor = null;
+let liveBuffer     = null;
+let liveBufferProc = null;
+let captureManager = null;
+let samplerPanel   = null;
+let trimPanel      = null;
 const pool       = createMediaPool();
 const playing    = new Map();  // id → AudioBufferSourceNode
 const presetStore = createPresetStore(localStorage);
@@ -290,12 +299,32 @@ startBtn.addEventListener('click', async () => {
             throw new Error('Click provider init failed: ' + initErr.message);
         }
 
-        // 4. Create metronome with 3-arg form: context, tc, clickProvider
-        metronome = createMetronome(context, tc, builtinClickProvider);
+        // 4. Initialize live buffer + metronome with boundary tagging
+        liveBuffer = createLiveBuffer(context.sampleRate);
+        liveBufferProc = context.createScriptProcessor(4096, 1, 1);
+        liveBufferProc.onaudioprocess = e => liveBuffer.write(e.inputBuffer.getChannelData(0));
+        source.connect(liveBufferProc);
+        liveBufferProc.connect(context.destination);
+        metronome = createMetronome(context, tc, builtinClickProvider, liveBuffer);
 
         // 5. Create alignment monitor (draws into its own offscreen canvas, blitted by metroDisplay)
         alignmentMonitor = createAlignmentMonitor(analyserNode, tc, getMetronomeState);
         metroDisplay.setWaveformLayer(alignmentMonitor.getCanvas());
+
+        // 5b. Sampler panel and trim panel
+        captureManager = createCaptureManager(liveBuffer, tc, pool, context);
+        samplerPanel = createSamplerPanel(
+            document.getElementById('sampler-mount'), pool, captureManager, liveBuffer, context, tc,
+            () => {
+                if (!metronome?.isRunning()) return context.currentTime;
+                const dur     = tc.beatsPerMeasure * (60 / tc.bpm);
+                const elapsed = (context.currentTime - metronome.measureStart) % dur;
+                return context.currentTime + (dur - elapsed);
+            }
+        );
+        samplerPanel.onTrimRequest(clipId => trimPanel && trimPanel.open(clipId));
+        trimPanel = createTrimPanel(document.getElementById('trim-mount'), pool, context);
+        initCollapsible('sampler-toggle', 'sampler-body', 'cn.sampler.collapsed');
 
         // 6. Initialize metro panel UI (sample set picker, preset bank)
         initMetroPanel();
@@ -325,6 +354,7 @@ function startRenderLoop() {
         const playheadPos = metronome ? metronome.getPlayheadPosition() : null;
         alignmentMonitor?.draw(timestamp, playheadPos);
         metroDisplay.draw(playheadPos);
+        samplerPanel?.drawLiveBuffer();
         requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
@@ -337,10 +367,12 @@ metroBtn.addEventListener('click', () => {
         metronome.stop();
         metroBtn.textContent = '▶';
         metroBtn.classList.remove('active');
+        samplerPanel?.setMetronomeRunning(false);
     } else {
         metronome.start();
         metroBtn.textContent = '■';
         metroBtn.classList.add('active');
+        samplerPanel?.setMetronomeRunning(true);
     }
 });
 
@@ -387,6 +419,7 @@ function finishRecording() {
     if (audioBuffer) {
         const clip = pool.addBuffer(audioBuffer, `Sample ${pool.clips.length + 1}`);
         renderPool();
+        samplerPanel?.refresh();
     }
     recordBtn.textContent = 'Record';
     recordBtn.classList.remove('active');
@@ -494,6 +527,7 @@ sampleList.addEventListener('click', (e) => {
         stopPlayback(id);
         pool.remove(id);
         renderPool();
+        samplerPanel?.refresh();
     } else if (action === 'rename') {
         const clip = pool.clips.find(c => c.id === id);
         if (!clip) return;
@@ -501,6 +535,7 @@ sampleList.addEventListener('click', (e) => {
         if (name && name.trim()) {
             pool.rename(id, name.trim());
             renderPool();
+            samplerPanel?.refresh();
         }
     }
 });
@@ -586,8 +621,7 @@ function initSampleBrowser() {
             e.preventDefault();
             e.stopPropagation();
             if (importDropOverlay) {
-                importDropOverlay.hidden = false;
-                importDropOverlay.style.display = 'block';
+                importDropOverlay.classList.add('visible');
             }
         });
 
@@ -595,8 +629,7 @@ function initSampleBrowser() {
             e.preventDefault();
             e.stopPropagation();
             if (importDropOverlay) {
-                importDropOverlay.hidden = true;
-                importDropOverlay.style.display = 'none';
+                importDropOverlay.classList.remove('visible');
             }
         });
 
@@ -604,8 +637,7 @@ function initSampleBrowser() {
             e.preventDefault();
             e.stopPropagation();
             if (importDropOverlay) {
-                importDropOverlay.hidden = true;
-                importDropOverlay.style.display = 'none';
+                importDropOverlay.classList.remove('visible');
             }
 
             const files = e.dataTransfer?.files || [];

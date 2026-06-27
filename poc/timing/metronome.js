@@ -1,7 +1,7 @@
 const LOOKAHEAD_SEC  = 0.025;   // schedule this far ahead
 const INTERVAL_MS    = 25;      // scheduler poll interval
 
-export function createMetronome(context, tc, clickProvider) {
+export function createMetronome(context, tc, clickProvider, liveBuffer = null) {
     if (!clickProvider) {
         throw new TypeError('createMetronome: clickProvider is required');
     }
@@ -11,6 +11,7 @@ export function createMetronome(context, tc, clickProvider) {
     let measureStart     = 0;
     let currentBeat      = 0;
     let nextBeatTime     = 0;
+    let measureIndex     = 0;
 
     function measureDur() {
         return tc.beatsPerMeasure * (60 / tc.bpm);
@@ -39,6 +40,7 @@ export function createMetronome(context, tc, clickProvider) {
                 currentBeat  = 0;
                 measureStart += dur;
             }
+            if (currentBeat === 0 && liveBuffer) liveBuffer.tagMeasureBoundary(++measureIndex, measureStart, liveBuffer.getTotalFramesWritten());
             nextBeatTime = measureStart + tc.beatOffsets[currentBeat] * dur;
         }
     }
@@ -49,6 +51,8 @@ export function createMetronome(context, tc, clickProvider) {
         measureStart  = context.currentTime;
         currentBeat   = 0;
         nextBeatTime  = context.currentTime;
+        measureIndex  = 0;
+        if (liveBuffer) liveBuffer.tagMeasureBoundary(0, context.currentTime, liveBuffer.getTotalFramesWritten());
         timer = setInterval(schedule, INTERVAL_MS);
     }
 

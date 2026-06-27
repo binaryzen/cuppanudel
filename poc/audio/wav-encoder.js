@@ -36,10 +36,18 @@ export async function encodeSetZip(clips, buffers, setName) {
     for (const clip of clips) {
         const ab = buffers.get(clip.bufferId);
         if (!ab) continue;
+        const base     = (setName||'set') + '/' + (clip.label||clip.id).replace(/[^a-z0-9_-]/gi,'_');
         const data     = encodeWav(ab, clip.startFrame, clip.endFrame);
-        const nameStr  = (setName||'set') + '/' + (clip.label||clip.id).replace(/[^a-z0-9_-]/gi,'_') + '.wav';
-        const nameBytes = enc.encode(nameStr);
-        entries.push({ nameBytes, data });
+        entries.push({ nameBytes: enc.encode(base + '.wav'), data });
+        // Sidecar metadata JSON alongside each WAV
+        const meta = JSON.stringify({
+            label: clip.label, capturedBpm: clip.capturedBpm,
+            capturedBeatsPerMeasure: clip.capturedBeatsPerMeasure,
+            capturedSampleRate: clip.capturedSampleRate, capturedMeasures: clip.capturedMeasures,
+            loopMode: clip.loopMode, loopStart: clip.loopStart, loopEnd: clip.loopEnd,
+            fadeInFrames: clip.fadeInFrames, fadeOutFrames: clip.fadeOutFrames,
+        }, null, 2);
+        entries.push({ nameBytes: enc.encode(base + '.json'), data: enc.encode(meta) });
     }
     const parts = [], central = [];
     let offset = 0;
